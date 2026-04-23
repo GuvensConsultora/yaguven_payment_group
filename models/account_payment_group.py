@@ -101,12 +101,18 @@ class AccountPaymentGroup(models.Model):
                 if group.partner_type == "customer"
                 else "liability_payable"
             )
+            move_types = (
+                ("out_invoice", "out_refund")
+                if group.partner_type == "customer"
+                else ("in_invoice", "in_refund")
+            )
             lines = self.env["account.move.line"].search([
                 ("partner_id", "=", group.partner_id.id),
                 ("company_id", "=", group.company_id.id),
                 ("account_id.account_type", "=", account_type),
                 ("parent_state", "=", "posted"),
                 ("reconciled", "=", False),
+                ("move_id.move_type", "in", move_types),
             ])
             group.to_pay_move_line_ids = [(6, 0, lines.ids)]
 
