@@ -89,6 +89,18 @@ class AccountPaymentGroup(models.Model):
         string="Diferencia (no conciliado)",
         store=True,
     )
+    partner_open_invoices_amount = fields.Monetary(
+        compute="_compute_partner_open_amounts",
+        string="Facturas pendientes",
+    )
+    partner_open_credits_amount = fields.Monetary(
+        compute="_compute_partner_open_amounts",
+        string="NC sin aplicar",
+    )
+    partner_open_payments_amount = fields.Monetary(
+        compute="_compute_partner_open_amounts",
+        string="Pagos sin aplicar",
+    )
 
     @api.onchange("partner_id", "partner_type", "company_id")
     def _onchange_partner_autofill_to_pay(self):
@@ -135,6 +147,34 @@ class AccountPaymentGroup(models.Model):
     def _compute_unreconciled_amount(self):
         for group in self:
             group.unreconciled_amount = group.payments_amount - group.to_pay_amount
+
+    @api.depends("partner_id", "partner_type", "company_id")
+    def _compute_partner_open_amounts(self):
+        Line = self.env["account.move.line"]
+        for group in self:
+            group.partner_open_invoices_amount = 0.0
+            group.partner_open_credits_amount = 0.0
+            group.partner_open_payments_amount = 0.0
+            if not group.partner_id:
+                continue
+            is_customer = group.partner_type == "customer"
+            account_type = "asset_receivable" if is_customer else "liability_payable"
+            invoice_type = "out_invoice" if is_customer else "in_invoice"
+            refund_type = "out_refund" if is_customer else "in_refund"
+            sign = 1 if is_customer else -1
+            base_domain = [
+                ("partner_id", "=", group.partner_id.id),
+                ("company_id", "=", group.company_id.id),
+                ("account_id.account_type", "=", account_type),
+                ("parent_state", "=", "posted"),
+                ("reconciled", "=", False),
+            ]
+            invoices = Line.search(base_domain + [("move_id.move_type", "=", invoice_type)])
+            refunds = Line.search(base_domain + [("move_id.move_type", "=", refund_type)])
+            payments = Line.search(base_domain + [("move_id.origin_payment_id", "!=", False)])
+            group.partner_open_invoices_amount = sign * sum(invoices.mapped("amount_residual"))
+            group.partner_open_credits_amount = -sign * sum(refunds.mapped("amount_residual"))
+            group.partner_open_payments_amount = -sign * sum(payments.mapped("amount_residual"))
 
     def _get_sequence_code(self):
         self.ensure_one()

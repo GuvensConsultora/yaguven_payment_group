@@ -94,7 +94,13 @@
                         </page>
                     </notebook>
                     <group>
-                        <group/>
+                        <group string="Estado de cuenta del tercero"
+                               name="partner_summary"
+                               invisible="not partner_id">
+                            <field name="partner_open_invoices_amount"/>
+                            <field name="partner_open_credits_amount"/>
+                            <field name="partner_open_payments_amount"/>
+                        </group>
                         <group class="oe_subtotal_footer">
                             <field name="payments_amount"/>
                             <field name="to_pay_amount"/>
