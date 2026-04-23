@@ -90,6 +90,26 @@ class AccountPaymentGroup(models.Model):
         store=True,
     )
 
+    @api.onchange("partner_id", "partner_type", "company_id")
+    def _onchange_partner_autofill_to_pay(self):
+        for group in self:
+            if group.state != "draft" or not group.partner_id:
+                group.to_pay_move_line_ids = [(5, 0, 0)]
+                continue
+            account_type = (
+                "asset_receivable"
+                if group.partner_type == "customer"
+                else "liability_payable"
+            )
+            lines = self.env["account.move.line"].search([
+                ("partner_id", "=", group.partner_id.id),
+                ("company_id", "=", group.company_id.id),
+                ("account_id.account_type", "=", account_type),
+                ("parent_state", "=", "posted"),
+                ("reconciled", "=", False),
+            ])
+            group.to_pay_move_line_ids = [(6, 0, lines.ids)]
+
     @api.depends("payment_ids.amount", "payment_ids.state")
     def _compute_payments_amount(self):
         for group in self:
