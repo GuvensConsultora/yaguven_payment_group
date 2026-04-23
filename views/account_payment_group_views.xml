@@ -52,7 +52,7 @@
                                     <field name="payment_method_line_id"/>
                                     <field name="amount" sum="Total"/>
                                     <field name="currency_id" column_invisible="1"/>
-                                    <field name="ref"/>
+                                    <field name="memo"/>
                                     <field name="state"/>
                                     <field name="partner_id" column_invisible="1"/>
                                     <field name="partner_type" column_invisible="1"/>
