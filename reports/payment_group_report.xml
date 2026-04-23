@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="action_report_payment_group" model="ir.actions.report">
+        <field name="name">Recibo / Orden de pago</field>
+        <field name="model">account.payment.group</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">yaguven_payment_group.report_payment_group</field>
+        <field name="report_file">yaguven_payment_group.report_payment_group</field>
+        <field name="binding_model_id" ref="model_account_payment_group"/>
+        <field name="binding_type">report</field>
+        <field name="print_report_name">
+            (object.payment_type == 'inbound' and 'Recibo ' or 'Orden de pago ') + (object.name or '')
+        </field>
+    </record>
+
+    <template id="report_payment_group_document">
+        <t t-call="web.external_layout">
+            <div class="page">
+                <div class="row">
+                    <div class="col-12 text-center">
+                        <h2>
+                            <span t-if="o.payment_type == 'inbound'">Recibo</span>
+                            <span t-else="">Orden de pago</span>
+                            <t t-esc="' '"/>
+                            <span t-field="o.name"/>
+                        </h2>
+                    </div>
+                </div>
+
+                <div class="row mt-4">
+                    <div class="col-7">
+                        <strong>
+                            <span t-if="o.partner_type == 'customer'">Recibimos de:</span>
+                            <span t-else="">Pagamos a:</span>
+                        </strong>
+                        <div><span t-field="o.partner_id.name"/></div>
+                        <div t-if="o.partner_id.vat">
+                            <strong>CUIT / DNI:</strong> <span t-field="o.partner_id.vat"/>
+                        </div>
+                        <div t-if="o.partner_id.l10n_ar_afip_responsibility_type_id">
+                            <strong>Cond. IVA:</strong>
+                            <span t-field="o.partner_id.l10n_ar_afip_responsibility_type_id.name"/>
+                        </div>
+                        <div t-if="o.partner_id.contact_address">
+                            <span t-field="o.partner_id.contact_address"/>
+                        </div>
+                    </div>
+                    <div class="col-5 text-end">
+                        <div><strong>Fecha:</strong> <span t-field="o.payment_date"/></div>
+                        <div t-if="o.communication">
+                            <strong>Concepto:</strong> <span t-field="o.communication"/>
+                        </div>
+                        <div t-if="o.state != 'posted'" class="text-danger">
+                            <strong>ESTADO:</strong> <span t-field="o.state"/>
+                        </div>
+                    </div>
+                </div>
+
+                <h4 class="mt-4">Comprobantes cancelados</h4>
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Comprobante</th>
+                            <th class="text-end">Importe</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr t-foreach="o.to_pay_move_line_ids" t-as="l">
+                            <td><span t-field="l.date"/></td>
+                            <td><span t-field="l.move_id.name"/></td>
+                            <td class="text-end">
+                                <span t-esc="abs(l.amount_residual)"
+                                      t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
+                            </td>
+                        </tr>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th colspan="2" class="text-end">Total a cancelar</th>
+                            <th class="text-end">
+                                <span t-field="o.to_pay_amount"
+                                      t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
+                            </th>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                <h4 class="mt-4">Medios de pago</h4>
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Diario</th>
+                            <th>Método</th>
+                            <th>Detalle</th>
+                            <th class="text-end">Importe</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr t-foreach="o.payment_ids" t-as="p">
+                            <td><span t-field="p.journal_id.name"/></td>
+                            <td><span t-field="p.payment_method_line_id.name"/></td>
+                            <td><span t-field="p.memo"/></td>
+                            <td class="text-end">
+                                <span t-field="p.amount"
+                                      t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
+                            </td>
+                        </tr>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th colspan="3" class="text-end">Total medios de pago</th>
+                            <th class="text-end">
+                                <span t-field="o.payments_amount"
+                                      t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
+                            </th>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                <div class="row mt-3" t-if="o.unreconciled_amount">
+                    <div class="col-12 text-end text-danger">
+                        <strong>Diferencia no conciliada:</strong>
+                        <span t-field="o.unreconciled_amount"
+                              t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
+                    </div>
+                </div>
+
+                <div class="row" style="margin-top: 80px;">
+                    <div class="col-6 text-center">
+                        <div style="border-top: 1px solid #000; padding-top: 5px; margin: 0 20px;">
+                            <span t-if="o.partner_type == 'customer'">Firma del cliente</span>
+                            <span t-else="">Firma del proveedor</span>
+                        </div>
+                    </div>
+                    <div class="col-6 text-center">
+                        <div style="border-top: 1px solid #000; padding-top: 5px; margin: 0 20px;">
+                            Firma autorizada
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <template id="report_payment_group">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-call="yaguven_payment_group.report_payment_group_document"/>
+            </t>
+        </t>
+    </template>
+
+</odoo>
