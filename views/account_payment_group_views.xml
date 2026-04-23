@@ -144,7 +144,7 @@
                         domain="[('partner_type', '=', 'customer')]"/>
                 <filter name="supplier" string="Proveedores"
                         domain="[('partner_type', '=', 'supplier')]"/>
-                <group expand="0" string="Agrupar por">
+                <group string="Agrupar por">
                     <filter name="group_partner" string="Tercero"
                             context="{'group_by': 'partner_id'}"/>
                     <filter name="group_date" string="Fecha"
