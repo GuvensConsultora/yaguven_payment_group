@@ -110,11 +110,88 @@ class AccountPaymentGroup(models.Model):
         for group in self:
             group.unreconciled_amount = group.payments_amount - group.to_pay_amount
 
+    def _get_sequence_code(self):
+        self.ensure_one()
+        return (
+            "account.payment.group.inbound"
+            if self.payment_type == "inbound"
+            else "account.payment.group.outbound"
+        )
+
+    def _get_counterpart_lines(self):
+        self.ensure_one()
+        return self.payment_ids.move_id.line_ids.filtered(
+            lambda l: (
+                l.account_id.account_type in ("asset_receivable", "liability_payable")
+                and l.partner_id == self.partner_id
+                and not l.reconciled
+            )
+        )
+
     def action_post(self):
-        raise UserError(_("La confirmación del grupo todavía no está implementada."))
+        for group in self:
+            if group.state != "draft":
+                raise UserError(_("Sólo se pueden confirmar grupos en borrador."))
+            if not group.payment_ids:
+                raise UserError(_("Agregá al menos un medio de pago antes de confirmar."))
+
+            seq_code = group._get_sequence_code()
+            name = self.env["ir.sequence"].next_by_code(seq_code)
+            if not name:
+                raise UserError(_(
+                    "No se encontró la secuencia '%s'. Verificá que el módulo esté bien cargado."
+                ) % seq_code)
+
+            draft_payments = group.payment_ids.filtered(lambda p: p.state == "draft")
+            if draft_payments:
+                draft_payments.action_post()
+
+            counterpart = group._get_counterpart_lines()
+            to_reconcile = counterpart | group.to_pay_move_line_ids
+            matched = self.env["account.move.line"]
+            if to_reconcile:
+                accounts = to_reconcile.mapped("account_id")
+                if len(accounts) > 1:
+                    raise UserError(_(
+                        "Los medios de pago y las facturas seleccionadas deben usar "
+                        "la misma cuenta contable de deudores/acreedores. "
+                        "Cuentas encontradas: %s.\n\n"
+                        "Los diarios con cuenta 'outstanding' separada no están "
+                        "soportados en esta versión. Configurá el diario de pago "
+                        "para que impacte directamente la cuenta del cliente/proveedor."
+                    ) % ", ".join(accounts.mapped("code")))
+                to_reconcile.reconcile()
+                matched = to_reconcile
+
+            group.write({
+                "name": name,
+                "state": "posted",
+                "matched_move_line_ids": [(6, 0, matched.ids)],
+            })
+        return True
 
     def action_cancel(self):
-        raise UserError(_("La cancelación del grupo todavía no está implementada."))
+        for group in self:
+            if group.state == "cancel":
+                continue
+            if group.state == "posted":
+                if group.matched_move_line_ids:
+                    group.matched_move_line_ids.remove_move_reconcile()
+                posted = group.payment_ids.filtered(lambda p: p.state == "posted")
+                if posted:
+                    posted.action_cancel()
+            group.write({
+                "state": "cancel",
+                "matched_move_line_ids": [(5, 0, 0)],
+            })
+        return True
 
     def action_draft(self):
-        raise UserError(_("El pase a borrador del grupo todavía no está implementado."))
+        for group in self:
+            if group.state != "cancel":
+                raise UserError(_("Solo se puede volver a borrador desde el estado cancelado."))
+            cancelled = group.payment_ids.filtered(lambda p: p.state == "cancel")
+            if cancelled:
+                cancelled.action_draft()
+            group.state = "draft"
+        return True
