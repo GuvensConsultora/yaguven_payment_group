@@ -11,7 +11,7 @@
     </record>
 
     <menuitem id="menu_account_payment_group_customer"
-              name="Cobros"
+              name="Recibos"
               parent="account.menu_finance_receivables"
               action="action_account_payment_group_customer"
               sequence="15"/>

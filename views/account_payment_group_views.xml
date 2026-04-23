@@ -25,10 +25,12 @@
                         <group>
                             <field name="partner_type" widget="radio"
                                    options="{'horizontal': true}"
-                                   readonly="state != 'draft'"/>
+                                   readonly="state != 'draft'"
+                                   invisible="context.get('default_partner_type')"/>
                             <field name="payment_type" widget="radio"
                                    options="{'horizontal': true}"
-                                   readonly="state != 'draft'"/>
+                                   readonly="state != 'draft'"
+                                   invisible="context.get('default_payment_type')"/>
                             <field name="partner_id" readonly="state != 'draft'"/>
                         </group>
                         <group>
