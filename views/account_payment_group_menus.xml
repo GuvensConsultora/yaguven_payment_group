@@ -1,16 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
+    <!-- Ocultamos los menús nativos "Pagos" de Clientes y Proveedores;
+         los reemplazan "Cobros" y "Órdenes de pago" de este módulo. -->
+    <record id="account.menu_action_account_payments_receivable" model="ir.ui.menu">
+        <field name="active" eval="False"/>
+    </record>
+    <record id="account.menu_action_account_payments_payable" model="ir.ui.menu">
+        <field name="active" eval="False"/>
+    </record>
+
     <menuitem id="menu_account_payment_group_customer"
-              name="Recibos"
+              name="Cobros"
               parent="account.menu_finance_receivables"
               action="action_account_payment_group_customer"
-              sequence="25"/>
+              sequence="15"/>
 
     <menuitem id="menu_account_payment_group_supplier"
               name="Órdenes de pago"
               parent="account.menu_finance_payables"
               action="action_account_payment_group_supplier"
-              sequence="25"/>
+              sequence="20"/>
 
 </odoo>
