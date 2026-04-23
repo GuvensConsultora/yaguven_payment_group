@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_account_payment_group_form" model="ir.ui.view">
+        <field name="name">account.payment.group.form</field>
+        <field name="model">account.payment.group</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_post" type="object" string="Confirmar"
+                            class="oe_highlight" invisible="state != 'draft'"/>
+                    <button name="action_cancel" type="object" string="Cancelar"
+                            invisible="state == 'cancel'"/>
+                    <button name="action_draft" type="object" string="Volver a borrador"
+                            invisible="state != 'cancel'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,posted"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="partner_type" widget="radio"
+                                   options="{'horizontal': true}"
+                                   readonly="state != 'draft'"/>
+                            <field name="payment_type" widget="radio"
+                                   options="{'horizontal': true}"
+                                   readonly="state != 'draft'"/>
+                            <field name="partner_id" readonly="state != 'draft'"/>
+                        </group>
+                        <group>
+                            <field name="payment_date" readonly="state != 'draft'"/>
+                            <field name="communication" readonly="state != 'draft'"/>
+                            <field name="company_id" groups="base.group_multi_company"
+                                   readonly="state != 'draft'"/>
+                            <field name="currency_id" invisible="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Medios de pago" name="payments">
+                            <field name="payment_ids" readonly="state != 'draft'"
+                                   context="{'default_partner_id': partner_id,
+                                             'default_partner_type': partner_type,
+                                             'default_payment_type': payment_type,
+                                             'default_company_id': company_id,
+                                             'default_date': payment_date}">
+                                <list editable="bottom">
+                                    <field name="journal_id"/>
+                                    <field name="payment_method_line_id"/>
+                                    <field name="amount" sum="Total"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                    <field name="ref"/>
+                                    <field name="state"/>
+                                    <field name="partner_id" column_invisible="1"/>
+                                    <field name="partner_type" column_invisible="1"/>
+                                    <field name="payment_type" column_invisible="1"/>
+                                    <field name="company_id" column_invisible="1"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Comprobantes a cancelar" name="to_pay">
+                            <field name="to_pay_move_line_ids" readonly="state != 'draft'">
+                                <list>
+                                    <field name="date"/>
+                                    <field name="move_id"/>
+                                    <field name="name"/>
+                                    <field name="account_id"/>
+                                    <field name="debit"/>
+                                    <field name="credit"/>
+                                    <field name="amount_residual" sum="Residual"/>
+                                    <field name="amount_residual_currency" optional="hide"/>
+                                    <field name="currency_id" optional="hide"/>
+                                    <field name="partner_id" column_invisible="1"/>
+                                    <field name="company_id" column_invisible="1"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Líneas conciliadas" name="matched"
+                              invisible="state != 'posted'">
+                            <field name="matched_move_line_ids" readonly="1">
+                                <list>
+                                    <field name="date"/>
+                                    <field name="move_id"/>
+                                    <field name="account_id"/>
+                                    <field name="debit"/>
+                                    <field name="credit"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                    <group>
+                        <group/>
+                        <group class="oe_subtotal_footer">
+                            <field name="payments_amount"/>
+                            <field name="to_pay_amount"/>
+                            <field name="unreconciled_amount"/>
+                        </group>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_account_payment_group_list" model="ir.ui.view">
+        <field name="name">account.payment.group.list</field>
+        <field name="model">account.payment.group</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="payment_date"/>
+                <field name="partner_id"/>
+                <field name="communication" optional="show"/>
+                <field name="payments_amount" sum="Total" optional="show"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="company_id" groups="base.group_multi_company" optional="hide"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'draft'"
+                       decoration-success="state == 'posted'"
+                       decoration-muted="state == 'cancel'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_account_payment_group_search" model="ir.ui.view">
+        <field name="name">account.payment.group.search</field>
+        <field name="model">account.payment.group</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="communication"/>
+                <filter name="draft" string="Borradores"
+                        domain="[('state', '=', 'draft')]"/>
+                <filter name="posted" string="Confirmados"
+                        domain="[('state', '=', 'posted')]"/>
+                <filter name="cancel" string="Cancelados"
+                        domain="[('state', '=', 'cancel')]"/>
+                <separator/>
+                <filter name="customer" string="Clientes"
+                        domain="[('partner_type', '=', 'customer')]"/>
+                <filter name="supplier" string="Proveedores"
+                        domain="[('partner_type', '=', 'supplier')]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_partner" string="Tercero"
+                            context="{'group_by': 'partner_id'}"/>
+                    <filter name="group_date" string="Fecha"
+                            context="{'group_by': 'payment_date'}"/>
+                    <filter name="group_state" string="Estado"
+                            context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_account_payment_group_customer" model="ir.actions.act_window">
+        <field name="name">Recibos</field>
+        <field name="res_model">account.payment.group</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('partner_type', '=', 'customer'), ('payment_type', '=', 'inbound')]</field>
+        <field name="context">{'default_partner_type': 'customer', 'default_payment_type': 'inbound'}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Registrá el primer recibo de cobro</p>
+            <p>Agrupá varios medios de pago (efectivo, cheque, transferencia, retenciones sufridas) en un único recibo que cancele una o más facturas del cliente.</p>
+        </field>
+    </record>
+
+    <record id="action_account_payment_group_supplier" model="ir.actions.act_window">
+        <field name="name">Órdenes de pago</field>
+        <field name="res_model">account.payment.group</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('partner_type', '=', 'supplier'), ('payment_type', '=', 'outbound')]</field>
+        <field name="context">{'default_partner_type': 'supplier', 'default_payment_type': 'outbound'}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Registrá la primera orden de pago</p>
+            <p>Agrupá varios medios de pago (efectivo, cheque propio, transferencia, retenciones practicadas) en una única OP que cancele una o más facturas del proveedor.</p>
+        </field>
+    </record>
+
+</odoo>

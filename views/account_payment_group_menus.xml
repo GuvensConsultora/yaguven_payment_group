@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <menuitem id="menu_account_payment_group_customer"
+              name="Recibos"
+              parent="account.menu_finance_receivables"
+              action="action_account_payment_group_customer"
+              sequence="25"/>
+
+    <menuitem id="menu_account_payment_group_supplier"
+              name="Órdenes de pago"
+              parent="account.menu_finance_payables"
+              action="action_account_payment_group_supplier"
+              sequence="25"/>
+
+</odoo>
