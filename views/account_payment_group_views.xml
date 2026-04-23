@@ -16,6 +16,35 @@
                     <field name="state" widget="statusbar" statusbar_visible="draft,posted"/>
                 </header>
                 <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_open_partner_invoices" type="object"
+                                class="oe_stat_button" icon="fa-file-text-o"
+                                invisible="not partner_id or not partner_open_invoices_amount">
+                            <div class="o_stat_info">
+                                <field name="partner_open_invoices_amount"
+                                       widget="monetary" class="o_stat_value"/>
+                                <span class="o_stat_text">Facturas pendientes</span>
+                            </div>
+                        </button>
+                        <button name="action_open_partner_credits" type="object"
+                                class="oe_stat_button" icon="fa-undo"
+                                invisible="not partner_id or not partner_open_credits_amount">
+                            <div class="o_stat_info">
+                                <field name="partner_open_credits_amount"
+                                       widget="monetary" class="o_stat_value"/>
+                                <span class="o_stat_text">NC sin aplicar</span>
+                            </div>
+                        </button>
+                        <button name="action_open_partner_payments" type="object"
+                                class="oe_stat_button" icon="fa-money"
+                                invisible="not partner_id or not partner_open_payments_amount">
+                            <div class="o_stat_info">
+                                <field name="partner_open_payments_amount"
+                                       widget="monetary" class="o_stat_value"/>
+                                <span class="o_stat_text">Pagos sin aplicar</span>
+                            </div>
+                        </button>
+                    </div>
                     <div class="oe_title">
                         <h1>
                             <field name="name" readonly="1"/>
@@ -94,13 +123,7 @@
                         </page>
                     </notebook>
                     <group>
-                        <group string="Estado de cuenta del tercero"
-                               name="partner_summary"
-                               invisible="not partner_id">
-                            <field name="partner_open_invoices_amount"/>
-                            <field name="partner_open_credits_amount"/>
-                            <field name="partner_open_payments_amount"/>
-                        </group>
+                        <group/>
                         <group class="oe_subtotal_footer">
                             <field name="payments_amount"/>
                             <field name="to_pay_amount"/>

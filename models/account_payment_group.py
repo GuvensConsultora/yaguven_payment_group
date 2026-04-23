@@ -148,33 +148,92 @@ class AccountPaymentGroup(models.Model):
         for group in self:
             group.unreconciled_amount = group.payments_amount - group.to_pay_amount
 
+    def _get_partner_open_lines(self, kind):
+        """kind ∈ {'invoice', 'refund', 'payment'}. Devuelve AML abiertas del
+        partner sobre la cuenta de deudores/acreedores, filtradas por tipo."""
+        self.ensure_one()
+        if not self.partner_id:
+            return self.env["account.move.line"]
+        is_customer = self.partner_type == "customer"
+        account_type = "asset_receivable" if is_customer else "liability_payable"
+        domain = [
+            ("partner_id", "=", self.partner_id.id),
+            ("company_id", "=", self.company_id.id),
+            ("account_id.account_type", "=", account_type),
+            ("parent_state", "=", "posted"),
+            ("reconciled", "=", False),
+        ]
+        if kind == "invoice":
+            domain.append((
+                "move_id.move_type",
+                "=",
+                "out_invoice" if is_customer else "in_invoice",
+            ))
+        elif kind == "refund":
+            domain.append((
+                "move_id.move_type",
+                "=",
+                "out_refund" if is_customer else "in_refund",
+            ))
+        elif kind == "payment":
+            domain.append(("move_id.origin_payment_id", "!=", False))
+        return self.env["account.move.line"].search(domain)
+
     @api.depends("partner_id", "partner_type", "company_id")
     def _compute_partner_open_amounts(self):
-        Line = self.env["account.move.line"]
         for group in self:
             group.partner_open_invoices_amount = 0.0
             group.partner_open_credits_amount = 0.0
             group.partner_open_payments_amount = 0.0
             if not group.partner_id:
                 continue
-            is_customer = group.partner_type == "customer"
-            account_type = "asset_receivable" if is_customer else "liability_payable"
-            invoice_type = "out_invoice" if is_customer else "in_invoice"
-            refund_type = "out_refund" if is_customer else "in_refund"
-            sign = 1 if is_customer else -1
-            base_domain = [
-                ("partner_id", "=", group.partner_id.id),
-                ("company_id", "=", group.company_id.id),
-                ("account_id.account_type", "=", account_type),
-                ("parent_state", "=", "posted"),
-                ("reconciled", "=", False),
-            ]
-            invoices = Line.search(base_domain + [("move_id.move_type", "=", invoice_type)])
-            refunds = Line.search(base_domain + [("move_id.move_type", "=", refund_type)])
-            payments = Line.search(base_domain + [("move_id.origin_payment_id", "!=", False)])
+            sign = 1 if group.partner_type == "customer" else -1
+            invoices = group._get_partner_open_lines("invoice")
+            refunds = group._get_partner_open_lines("refund")
+            payments = group._get_partner_open_lines("payment")
             group.partner_open_invoices_amount = sign * sum(invoices.mapped("amount_residual"))
             group.partner_open_credits_amount = -sign * sum(refunds.mapped("amount_residual"))
             group.partner_open_payments_amount = -sign * sum(payments.mapped("amount_residual"))
+
+    def action_open_partner_invoices(self):
+        self.ensure_one()
+        move_ids = self._get_partner_open_lines("invoice").mapped("move_id").ids
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Facturas pendientes — %s") % (self.partner_id.display_name or ""),
+            "res_model": "account.move",
+            "view_mode": "list,form",
+            "domain": [("id", "in", move_ids)],
+            "context": {"create": False},
+        }
+
+    def action_open_partner_credits(self):
+        self.ensure_one()
+        move_ids = self._get_partner_open_lines("refund").mapped("move_id").ids
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("NC sin aplicar — %s") % (self.partner_id.display_name or ""),
+            "res_model": "account.move",
+            "view_mode": "list,form",
+            "domain": [("id", "in", move_ids)],
+            "context": {"create": False},
+        }
+
+    def action_open_partner_payments(self):
+        self.ensure_one()
+        payment_ids = (
+            self._get_partner_open_lines("payment")
+            .mapped("move_id.origin_payment_id")
+            .ids
+        )
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Pagos sin aplicar — %s") % (self.partner_id.display_name or ""),
+            "res_model": "account.payment",
+            "view_mode": "list,form",
+            "domain": [("id", "in", payment_ids)],
+            "context": {"create": False},
+        }
 
     def _get_sequence_code(self):
         self.ensure_one()
