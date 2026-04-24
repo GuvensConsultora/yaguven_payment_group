@@ -176,7 +176,7 @@ class AccountPaymentGroup(models.Model):
                 "out_refund" if is_customer else "in_refund",
             ))
         elif kind == "payment":
-            domain.append(("move_id.origin_payment_id", "!=", False))
+            domain.append(("payment_id", "!=", False))
         return self.env["account.move.line"].search(domain)
 
     @api.depends("partner_id", "partner_type", "company_id")
@@ -221,11 +221,7 @@ class AccountPaymentGroup(models.Model):
 
     def action_open_partner_payments(self):
         self.ensure_one()
-        payment_ids = (
-            self._get_partner_open_lines("payment")
-            .mapped("move_id.origin_payment_id")
-            .ids
-        )
+        payment_ids = self._get_partner_open_lines("payment").mapped("payment_id").ids
         return {
             "type": "ir.actions.act_window",
             "name": _("Pagos sin aplicar — %s") % (self.partner_id.display_name or ""),
