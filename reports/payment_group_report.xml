@@ -68,7 +68,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr t-foreach="o.to_pay_move_line_ids" t-as="l">
+                        <tr t-foreach="o.to_pay_move_line_ids.sorted(key=lambda l: (l.date, l.move_id.name))" t-as="l">
                             <td><span t-field="l.date"/></td>
                             <td><span t-field="l.move_id.name"/></td>
                             <td class="text-end">
@@ -116,7 +116,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr t-foreach="o.payment_ids" t-as="p">
+                        <tr t-foreach="o.payment_ids.sorted(key=lambda p: (p.journal_id.name or '', p.payment_method_line_id.name or '', p.id))" t-as="p">
                             <td><span t-field="p.journal_id.name"/></td>
                             <td><span t-field="p.payment_method_line_id.name"/></td>
                             <td><span t-field="p.memo"/></td>
