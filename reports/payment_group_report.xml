@@ -71,7 +71,7 @@
                             <td><span t-field="l.date"/></td>
                             <td><span t-field="l.move_id.name"/></td>
                             <td class="text-end">
-                                <span t-esc="abs(l.amount_residual)"
+                                <span t-esc="o._get_line_cancelled_amount(l)"
                                       t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
                             </td>
                         </tr>

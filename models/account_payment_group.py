@@ -151,23 +151,59 @@ class AccountPaymentGroup(models.Model):
                 p.amount for p in group.payment_ids if p.state != "cancel"
             )
 
-    @api.depends("to_pay_move_line_ids", "to_pay_move_line_ids.amount_residual")
+    def _get_line_cancelled_amount(self, line):
+        """Importe cancelado de `line` en este grupo.
+
+        En draft devuelve |residual| (estimación de lo que se va a cancelar
+        si los payments alcanzan). En posted deriva del reconciliation real:
+        suma los parciales cuya contraparte esté en `matched_move_line_ids`
+        del grupo, para que el importe se mantenga correcto aunque el
+        residual del AML ya haya quedado en 0.
+        """
+        self.ensure_one()
+        if self.state != "posted":
+            return abs(line.amount_residual)
+        counterparts = self.matched_move_line_ids - line
+        if not counterparts:
+            return 0.0
+        partials = line.matched_debit_ids.filtered(
+            lambda p: p.credit_move_id in counterparts
+        ) | line.matched_credit_ids.filtered(
+            lambda p: p.debit_move_id in counterparts
+        )
+        return sum(partials.mapped("amount"))
+
+    @api.depends(
+        "state",
+        "to_pay_move_line_ids",
+        "to_pay_move_line_ids.amount_residual",
+        "matched_move_line_ids",
+        "matched_move_line_ids.amount_residual",
+    )
     def _compute_to_pay_amount(self):
         for group in self:
+            if group.state == "posted":
+                group.to_pay_amount = sum(
+                    group._get_line_cancelled_amount(l)
+                    for l in group.to_pay_move_line_ids
+                )
+                continue
             sign = 1 if group.partner_type == "customer" else -1
             group.to_pay_amount = sign * sum(
                 line.amount_residual for line in group.to_pay_move_line_ids
             )
 
     @api.depends(
+        "state",
         "to_pay_move_line_ids",
         "to_pay_move_line_ids.amount_residual",
         "to_pay_move_line_ids.move_id.move_type",
+        "matched_move_line_ids",
+        "matched_move_line_ids.amount_residual",
         "partner_type",
     )
     def _compute_invoices_to_cancel_amount(self):
         for group in self:
-            sign = 1 if group.partner_type == "customer" else -1
             invoice_types = (
                 ("out_invoice",)
                 if group.partner_type == "customer"
@@ -176,6 +212,12 @@ class AccountPaymentGroup(models.Model):
             invoice_lines = group.to_pay_move_line_ids.filtered(
                 lambda l: l.move_id.move_type in invoice_types
             )
+            if group.state == "posted":
+                group.invoices_to_cancel_amount = sum(
+                    group._get_line_cancelled_amount(l) for l in invoice_lines
+                )
+                continue
+            sign = 1 if group.partner_type == "customer" else -1
             group.invoices_to_cancel_amount = sign * sum(
                 invoice_lines.mapped("amount_residual")
             )
