@@ -119,10 +119,19 @@
                     </tfoot>
                 </table>
 
-                <div class="row mt-3" t-if="o.unreconciled_amount">
-                    <div class="col-12 text-end text-danger">
-                        <strong>Diferencia no conciliada:</strong>
-                        <span t-field="o.unreconciled_amount"
+                <div class="row mt-3" t-if="o.net_to_cancel_amount">
+                    <div class="col-12 text-end"
+                         t-attf-class="#{'text-danger' if o.net_to_cancel_amount &gt; 0 else 'text-success'}">
+                        <strong t-if="o.net_to_cancel_amount &gt; 0">Neto a cancelar pendiente:</strong>
+                        <strong t-else="">Sobrante / anticipo:</strong>
+                        <span t-esc="abs(o.net_to_cancel_amount)"
+                              t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
+                    </div>
+                </div>
+                <div class="row mt-1" t-if="o.advance_amount">
+                    <div class="col-12 text-end">
+                        <strong>Anticipo sin factura:</strong>
+                        <span t-field="o.advance_amount"
                               t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
                     </div>
                 </div>
