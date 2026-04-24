@@ -116,6 +116,15 @@ class AccountPaymentGroup(models.Model):
         compute="_compute_partner_balance_amount",
         string="Saldo del tercero",
     )
+    pending_balance_amount = fields.Monetary(
+        compute="_compute_pending_balance_amount",
+        string="Saldo pendiente",
+        store=True,
+        help="Suma de residuales no conciliados de las facturas cubiertas "
+             "por este recibo/OP. Si los medios de pago no alcanzaron a "
+             "cubrir todos los comprobantes, este monto refleja el saldo "
+             "que el tercero sigue debiendo por esas facturas.",
+    )
 
     @api.onchange("partner_id", "partner_type", "company_id")
     def _onchange_partner_autofill_to_pay(self):
@@ -231,6 +240,21 @@ class AccountPaymentGroup(models.Model):
         for group in self:
             group.net_to_cancel_amount = (
                 group.invoices_to_cancel_amount - group.payments_amount
+            )
+
+    @api.depends(
+        "state",
+        "to_pay_move_line_ids",
+        "to_pay_move_line_ids.amount_residual",
+        "matched_move_line_ids",
+    )
+    def _compute_pending_balance_amount(self):
+        for group in self:
+            if group.state != "posted":
+                group.pending_balance_amount = 0.0
+                continue
+            group.pending_balance_amount = sum(
+                abs(l.amount_residual) for l in group.to_pay_move_line_ids
             )
 
     @api.onchange("to_pay_move_line_ids")
