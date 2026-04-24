@@ -82,12 +82,17 @@ class AccountPaymentGroup(models.Model):
     )
     to_pay_amount = fields.Monetary(
         compute="_compute_to_pay_amount",
-        string="Total a cancelar",
+        string="Total a cancelar (neto)",
         store=True,
     )
-    unreconciled_amount = fields.Monetary(
-        compute="_compute_unreconciled_amount",
-        string="Diferencia (no conciliado)",
+    invoices_to_cancel_amount = fields.Monetary(
+        compute="_compute_invoices_to_cancel_amount",
+        string="Total facturas a cancelar",
+        store=True,
+    )
+    advance_amount = fields.Monetary(
+        compute="_compute_advance_amount",
+        string="Anticipo sin factura",
         store=True,
     )
     partner_balance_amount = fields.Monetary(
@@ -137,10 +142,31 @@ class AccountPaymentGroup(models.Model):
                 line.amount_residual for line in group.to_pay_move_line_ids
             )
 
-    @api.depends("payments_amount", "to_pay_amount")
-    def _compute_unreconciled_amount(self):
+    @api.depends(
+        "to_pay_move_line_ids",
+        "to_pay_move_line_ids.amount_residual",
+        "to_pay_move_line_ids.move_id.move_type",
+        "partner_type",
+    )
+    def _compute_invoices_to_cancel_amount(self):
         for group in self:
-            group.unreconciled_amount = group.payments_amount - group.to_pay_amount
+            sign = 1 if group.partner_type == "customer" else -1
+            invoice_types = (
+                ("out_invoice",)
+                if group.partner_type == "customer"
+                else ("in_invoice",)
+            )
+            invoice_lines = group.to_pay_move_line_ids.filtered(
+                lambda l: l.move_id.move_type in invoice_types
+            )
+            group.invoices_to_cancel_amount = sign * sum(
+                invoice_lines.mapped("amount_residual")
+            )
+
+    @api.depends("payments_amount", "to_pay_amount")
+    def _compute_advance_amount(self):
+        for group in self:
+            group.advance_amount = group.payments_amount - group.to_pay_amount
 
     def _get_partner_open_account_domain(self):
         """Domain sobre account.move.line de pendientes del tercero en su

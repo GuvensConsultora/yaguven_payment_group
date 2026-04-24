@@ -108,8 +108,9 @@
                         <group/>
                         <group class="oe_subtotal_footer">
                             <field name="payments_amount"/>
+                            <field name="invoices_to_cancel_amount"/>
                             <field name="to_pay_amount"/>
-                            <field name="unreconciled_amount"/>
+                            <field name="advance_amount"/>
                         </group>
                     </group>
                 </sheet>
