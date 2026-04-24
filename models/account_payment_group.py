@@ -64,7 +64,8 @@ class AccountPaymentGroup(models.Model):
                " ('partner_id', '=', partner_id),"
                " ('company_id', '=', company_id),"
                " ('account_id.account_type', 'in', ('asset_receivable', 'liability_payable')),"
-               " ('reconciled', '=', False)]",
+               " ('reconciled', '=', False),"
+               " ('amount_residual', '!=', 0)]",
     )
     matched_move_line_ids = fields.Many2many(
         "account.move.line",
@@ -116,6 +117,7 @@ class AccountPaymentGroup(models.Model):
                 ("account_id.account_type", "=", account_type),
                 ("parent_state", "=", "posted"),
                 ("reconciled", "=", False),
+                ("amount_residual", "!=", 0),
                 ("move_id.move_type", "in", move_types),
             ])
             group.to_pay_move_line_ids = [(6, 0, lines.ids)]
@@ -152,6 +154,7 @@ class AccountPaymentGroup(models.Model):
             ("account_id.account_type", "=", account_type),
             ("parent_state", "=", "posted"),
             ("reconciled", "=", False),
+            ("amount_residual", "!=", 0),
         ]
 
     @api.depends("partner_id", "partner_type", "company_id")
