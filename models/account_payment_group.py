@@ -89,17 +89,9 @@ class AccountPaymentGroup(models.Model):
         string="Diferencia (no conciliado)",
         store=True,
     )
-    partner_open_invoices_amount = fields.Monetary(
-        compute="_compute_partner_open_amounts",
-        string="Facturas pendientes",
-    )
-    partner_open_credits_amount = fields.Monetary(
-        compute="_compute_partner_open_amounts",
-        string="NC sin aplicar",
-    )
-    partner_open_payments_amount = fields.Monetary(
-        compute="_compute_partner_open_amounts",
-        string="Pagos sin aplicar",
+    partner_balance_amount = fields.Monetary(
+        compute="_compute_partner_balance_amount",
+        string="Saldo del tercero",
     )
 
     @api.onchange("partner_id", "partner_type", "company_id")
@@ -148,96 +140,43 @@ class AccountPaymentGroup(models.Model):
         for group in self:
             group.unreconciled_amount = group.payments_amount - group.to_pay_amount
 
-    def _get_partner_open_lines(self, kind):
-        """kind ∈ {'invoice', 'refund', 'payment'}. Devuelve AML abiertas del
-        partner sobre la cuenta de deudores/acreedores, filtradas por tipo."""
+    def _get_partner_open_account_domain(self):
+        """Domain sobre account.move.line de pendientes del tercero en su
+        cuenta de deudores/acreedores."""
         self.ensure_one()
-        if not self.partner_id:
-            return self.env["account.move.line"]
         is_customer = self.partner_type == "customer"
         account_type = "asset_receivable" if is_customer else "liability_payable"
-        domain = [
+        return [
             ("partner_id", "=", self.partner_id.id),
             ("company_id", "=", self.company_id.id),
             ("account_id.account_type", "=", account_type),
             ("parent_state", "=", "posted"),
             ("reconciled", "=", False),
         ]
-        if kind == "invoice":
-            domain.append((
-                "move_id.move_type",
-                "=",
-                "out_invoice" if is_customer else "in_invoice",
-            ))
-        elif kind == "refund":
-            domain.append((
-                "move_id.move_type",
-                "=",
-                "out_refund" if is_customer else "in_refund",
-            ))
-        elif kind == "payment":
-            # AML sobre receivable/payable cuyo move NO es factura ni NC:
-            # pagos posteados sin conciliar, ajustes, recibos/OP viejos, etc.
-            # No filtramos por payment_id porque es un stored related que
-            # puede estar vacío en instancias migradas.
-            invoice_types = (
-                ("out_invoice", "out_refund")
-                if is_customer
-                else ("in_invoice", "in_refund")
-            )
-            domain.append(("move_id.move_type", "not in", invoice_types))
-        return self.env["account.move.line"].search(domain)
 
     @api.depends("partner_id", "partner_type", "company_id")
-    def _compute_partner_open_amounts(self):
+    def _compute_partner_balance_amount(self):
         for group in self:
-            group.partner_open_invoices_amount = 0.0
-            group.partner_open_credits_amount = 0.0
-            group.partner_open_payments_amount = 0.0
+            group.partner_balance_amount = 0.0
             if not group.partner_id:
                 continue
             sign = 1 if group.partner_type == "customer" else -1
-            invoices = group._get_partner_open_lines("invoice")
-            refunds = group._get_partner_open_lines("refund")
-            payments = group._get_partner_open_lines("payment")
-            group.partner_open_invoices_amount = sign * sum(invoices.mapped("amount_residual"))
-            group.partner_open_credits_amount = -sign * sum(refunds.mapped("amount_residual"))
-            group.partner_open_payments_amount = -sign * sum(payments.mapped("amount_residual"))
+            lines = self.env["account.move.line"].search(
+                group._get_partner_open_account_domain()
+            )
+            group.partner_balance_amount = sign * sum(lines.mapped("amount_residual"))
 
-    def action_open_partner_invoices(self):
+    def action_open_partner_account(self):
         self.ensure_one()
-        move_ids = self._get_partner_open_lines("invoice").mapped("move_id").ids
+        if not self.partner_id:
+            return False
         return {
             "type": "ir.actions.act_window",
-            "name": _("Facturas pendientes — %s") % (self.partner_id.display_name or ""),
-            "res_model": "account.move",
+            "name": _("Estado de cuenta — %s") % self.partner_id.display_name,
+            "res_model": "account.move.line",
             "view_mode": "list,form",
-            "domain": [("id", "in", move_ids)],
-            "context": {"create": False},
-        }
-
-    def action_open_partner_credits(self):
-        self.ensure_one()
-        move_ids = self._get_partner_open_lines("refund").mapped("move_id").ids
-        return {
-            "type": "ir.actions.act_window",
-            "name": _("NC sin aplicar — %s") % (self.partner_id.display_name or ""),
-            "res_model": "account.move",
-            "view_mode": "list,form",
-            "domain": [("id", "in", move_ids)],
-            "context": {"create": False},
-        }
-
-    def action_open_partner_payments(self):
-        self.ensure_one()
-        move_ids = self._get_partner_open_lines("payment").mapped("move_id").ids
-        return {
-            "type": "ir.actions.act_window",
-            "name": _("Pagos sin aplicar — %s") % (self.partner_id.display_name or ""),
-            "res_model": "account.move",
-            "view_mode": "list,form",
-            "domain": [("id", "in", move_ids)],
-            "context": {"create": False},
+            "domain": self._get_partner_open_account_domain(),
+            "context": {"create": False, "search_default_group_by_move": 1},
         }
 
     def _get_sequence_code(self):
