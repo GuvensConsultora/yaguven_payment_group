@@ -98,7 +98,7 @@
                                              'default_payment_type': payment_type,
                                              'default_company_id': company_id,
                                              'default_date': payment_date}">
-                                <list editable="bottom">
+                                <list>
                                     <field name="journal_id"/>
                                     <field name="payment_method_line_id"/>
                                     <field name="amount" sum="Total"/>
@@ -110,6 +110,78 @@
                                     <field name="payment_type" column_invisible="1"/>
                                     <field name="company_id" column_invisible="1"/>
                                 </list>
+                                <form string="Medio de pago">
+                                    <sheet>
+                                        <group>
+                                            <group>
+                                                <field name="journal_id"/>
+                                                <field name="payment_method_line_id"/>
+                                                <field name="amount"/>
+                                            </group>
+                                            <group>
+                                                <field name="memo" string="Concepto"/>
+                                                <field name="date"/>
+                                            </group>
+                                        </group>
+                                        <!-- invisibles necesarios para condiciones -->
+                                        <field name="payment_method_code" invisible="1"/>
+                                        <field name="is_card_journal" invisible="1"/>
+                                        <field name="currency_id" invisible="1"/>
+                                        <field name="state" invisible="1"/>
+                                        <field name="partner_id" invisible="1"/>
+                                        <field name="partner_type" invisible="1"/>
+                                        <field name="payment_type" invisible="1"/>
+                                        <field name="company_id" invisible="1"/>
+                                        <!-- Cheques propios o cheques de tercero NUEVOS recibidos -->
+                                        <notebook invisible="payment_method_code not in ('own_checks', 'new_third_party_checks') and not is_card_journal and payment_method_code not in ('in_third_party_checks', 'out_third_party_checks', 'return_third_party_checks')">
+                                            <page string="Cheques"
+                                                  invisible="payment_method_code not in ('own_checks', 'new_third_party_checks')">
+                                                <field name="l10n_latam_new_check_ids" nolabel="1">
+                                                    <list editable="bottom">
+                                                        <field name="name" string="Número"/>
+                                                        <field name="bank_id"/>
+                                                        <field name="issuer_vat"
+                                                               column_invisible="parent.payment_method_code == 'own_checks'"/>
+                                                        <field name="payment_date" string="Fecha de pago"/>
+                                                        <field name="amount" sum="Total"/>
+                                                        <field name="currency_id" column_invisible="1"/>
+                                                    </list>
+                                                </field>
+                                                <field name="l10n_latam_check_warning_msg"
+                                                       invisible="not l10n_latam_check_warning_msg"
+                                                       readonly="1"/>
+                                            </page>
+                                            <page string="Cheques de cartera"
+                                                  invisible="payment_method_code not in ('in_third_party_checks', 'out_third_party_checks', 'return_third_party_checks')">
+                                                <field name="l10n_latam_move_check_ids" nolabel="1">
+                                                    <list>
+                                                        <field name="name"/>
+                                                        <field name="bank_id"/>
+                                                        <field name="issuer_vat"/>
+                                                        <field name="payment_date"/>
+                                                        <field name="amount" sum="Total"/>
+                                                        <field name="currency_id" column_invisible="1"/>
+                                                    </list>
+                                                </field>
+                                            </page>
+                                            <page string="Datos de tarjeta"
+                                                  invisible="not is_card_journal">
+                                                <group>
+                                                    <group>
+                                                        <field name="card_brand"/>
+                                                        <field name="card_last_digits"/>
+                                                        <field name="card_voucher_number"/>
+                                                    </group>
+                                                    <group>
+                                                        <field name="card_authorization_code"/>
+                                                        <field name="card_installments"/>
+                                                        <field name="card_holder_name"/>
+                                                    </group>
+                                                </group>
+                                            </page>
+                                        </notebook>
+                                    </sheet>
+                                </form>
                             </field>
                         </page>
                         <page string="Líneas conciliadas" name="matched"
