@@ -312,6 +312,12 @@ class AccountPaymentGroup(models.Model):
             )
             group.partner_balance_amount = sign * sum(lines.mapped("amount_residual"))
 
+    def action_print_recibo(self):
+        self.ensure_one()
+        return self.env.ref(
+            "yaguven_payment_group.action_report_payment_group"
+        ).report_action(self)
+
     def action_open_partner_account(self):
         self.ensure_one()
         if not self.partner_id:
