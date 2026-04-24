@@ -176,7 +176,16 @@ class AccountPaymentGroup(models.Model):
                 "out_refund" if is_customer else "in_refund",
             ))
         elif kind == "payment":
-            domain.append(("payment_id", "!=", False))
+            # AML sobre receivable/payable cuyo move NO es factura ni NC:
+            # pagos posteados sin conciliar, ajustes, recibos/OP viejos, etc.
+            # No filtramos por payment_id porque es un stored related que
+            # puede estar vacío en instancias migradas.
+            invoice_types = (
+                ("out_invoice", "out_refund")
+                if is_customer
+                else ("in_invoice", "in_refund")
+            )
+            domain.append(("move_id.move_type", "not in", invoice_types))
         return self.env["account.move.line"].search(domain)
 
     @api.depends("partner_id", "partner_type", "company_id")
@@ -221,13 +230,13 @@ class AccountPaymentGroup(models.Model):
 
     def action_open_partner_payments(self):
         self.ensure_one()
-        payment_ids = self._get_partner_open_lines("payment").mapped("payment_id").ids
+        move_ids = self._get_partner_open_lines("payment").mapped("move_id").ids
         return {
             "type": "ir.actions.act_window",
             "name": _("Pagos sin aplicar — %s") % (self.partner_id.display_name or ""),
-            "res_model": "account.payment",
+            "res_model": "account.move",
             "view_mode": "list,form",
-            "domain": [("id", "in", payment_ids)],
+            "domain": [("id", "in", move_ids)],
             "context": {"create": False},
         }
 
