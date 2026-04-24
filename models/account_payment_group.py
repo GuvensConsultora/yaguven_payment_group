@@ -221,22 +221,28 @@ class AccountPaymentGroup(models.Model):
     )
     def _compute_invoices_to_cancel_amount(self):
         for group in self:
-            invoice_types = (
-                ("out_invoice",)
-                if group.partner_type == "customer"
-                else ("in_invoice",)
-            )
-            invoice_lines = group.to_pay_move_line_ids.filtered(
-                lambda l: l.move_id.move_type in invoice_types
+            if group.partner_type == "customer":
+                doc_types = ("out_invoice", "out_refund")
+                refund_type = "out_refund"
+                sign = 1
+            else:
+                doc_types = ("in_invoice", "in_refund")
+                refund_type = "in_refund"
+                sign = -1
+            doc_lines = group.to_pay_move_line_ids.filtered(
+                lambda l: l.move_id.move_type in doc_types
             )
             if group.state == "posted":
-                group.invoices_to_cancel_amount = sum(
-                    group._get_line_cancelled_amount(l) for l in invoice_lines
-                )
+                total = 0.0
+                for l in doc_lines:
+                    amt = group._get_line_cancelled_amount(l)
+                    if l.move_id.move_type == refund_type:
+                        amt = -amt
+                    total += amt
+                group.invoices_to_cancel_amount = total
                 continue
-            sign = 1 if group.partner_type == "customer" else -1
             group.invoices_to_cancel_amount = sign * sum(
-                invoice_lines.mapped("amount_residual")
+                doc_lines.mapped("amount_residual")
             )
 
     @api.depends("invoices_to_cancel_amount", "payments_amount")
