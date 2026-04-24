@@ -166,10 +166,14 @@ class AccountPaymentGroup(models.Model):
         counterparts = self.matched_move_line_ids - line
         if not counterparts:
             return 0.0
+        # Convención Odoo: matched_debit_ids es inverso de
+        # partial_reconcile.credit_move_id (self es el credit, counterpart
+        # es debit_move_id); matched_credit_ids es inverso de debit_move_id
+        # (self es el debit, counterpart es credit_move_id).
         partials = line.matched_debit_ids.filtered(
-            lambda p: p.credit_move_id in counterparts
-        ) | line.matched_credit_ids.filtered(
             lambda p: p.debit_move_id in counterparts
+        ) | line.matched_credit_ids.filtered(
+            lambda p: p.credit_move_id in counterparts
         )
         return sum(partials.mapped("amount"))
 
