@@ -47,20 +47,27 @@
                             <field name="communication" readonly="state != 'draft'"/>
                         </group>
                         <group>
+                            <field name="book_id" readonly="state != 'draft'"/>
                             <field name="payment_date" readonly="state != 'draft'"/>
                             <field name="company_id" groups="base.group_multi_company"
                                    readonly="state != 'draft'"/>
                             <field name="currency_id" invisible="1"/>
                         </group>
                     </group>
-                    <!-- Monitor en vivo de totales: se actualiza al tildar
-                         comprobantes y cargar medios de pago. -->
-                    <group name="totals_header" col="4">
-                        <field name="payments_amount"/>
-                        <field name="invoices_to_cancel_amount"/>
-                        <field name="to_pay_amount"/>
-                        <field name="advance_amount"
-                               readonly="state != 'draft' or invoices_to_cancel_amount != 0"/>
+                    <!-- Monitor en vivo: facturas − medios de pago = neto.
+                         Anticipo aparte (input del usuario). -->
+                    <group name="totals_header">
+                        <group>
+                            <field name="invoices_to_cancel_amount"/>
+                            <field name="payments_amount"
+                                   string="− Medios de pago"/>
+                            <field name="net_to_cancel_amount"
+                                   string="= Neto a cancelar"/>
+                        </group>
+                        <group>
+                            <field name="advance_amount"
+                                   readonly="state != 'draft' or invoices_to_cancel_amount != 0"/>
+                        </group>
                     </group>
                     <notebook>
                         <!-- Paso 2: elegir qué facturas cancelar -->
@@ -130,6 +137,7 @@
                 <field name="name"/>
                 <field name="payment_date"/>
                 <field name="partner_id"/>
+                <field name="book_id" optional="show"/>
                 <field name="communication" optional="show"/>
                 <field name="payments_amount" sum="Total" optional="show"/>
                 <field name="currency_id" column_invisible="1"/>
@@ -149,6 +157,7 @@
             <search>
                 <field name="name"/>
                 <field name="partner_id"/>
+                <field name="book_id"/>
                 <field name="communication"/>
                 <filter name="draft" string="Borradores"
                         domain="[('state', '=', 'draft')]"/>
@@ -164,6 +173,8 @@
                 <separator/>
                 <filter name="group_partner" string="Tercero"
                         context="{'group_by': 'partner_id'}"/>
+                <filter name="group_book" string="Talonario"
+                        context="{'group_by': 'book_id'}"/>
                 <filter name="group_date" string="Fecha"
                         context="{'group_by': 'payment_date'}"/>
                 <filter name="group_state" string="Estado"

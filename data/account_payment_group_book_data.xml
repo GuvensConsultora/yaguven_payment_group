@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+
+    <!-- Talonarios por defecto apuntando a las secuencias originales.
+         Usuarios pueden crear más talonarios en Contabilidad >
+         Configuración > Talonarios de recibo/OP, cada uno con su propia
+         secuencia. -->
+
+    <record id="book_receipt_default" model="account.payment.group.book">
+        <field name="name">Recibo estándar</field>
+        <field name="sequence_id" ref="seq_account_payment_group_inbound"/>
+        <field name="partner_type">customer</field>
+        <field name="payment_type">inbound</field>
+        <field name="company_id" eval="False"/>
+    </record>
+
+    <record id="book_payment_order_default" model="account.payment.group.book">
+        <field name="name">Orden de pago estándar</field>
+        <field name="sequence_id" ref="seq_account_payment_group_outbound"/>
+        <field name="partner_type">supplier</field>
+        <field name="payment_type">outbound</field>
+        <field name="company_id" eval="False"/>
+    </record>
+
+</odoo>

@@ -50,6 +50,15 @@ class AccountPaymentGroup(models.Model):
         default="draft",
         tracking=True,
     )
+    book_id = fields.Many2one(
+        "account.payment.group.book",
+        string="Talonario",
+        domain="[('partner_type', '=', partner_type),"
+               " ('payment_type', '=', payment_type),"
+               " '|', ('company_id', '=', company_id), ('company_id', '=', False),"
+               " ('active', '=', True)]",
+        tracking=True,
+    )
 
     payment_ids = fields.One2many(
         "account.payment",
@@ -87,8 +96,15 @@ class AccountPaymentGroup(models.Model):
     )
     invoices_to_cancel_amount = fields.Monetary(
         compute="_compute_invoices_to_cancel_amount",
-        string="Total facturas a cancelar",
+        string="Facturas a cancelar",
         store=True,
+    )
+    net_to_cancel_amount = fields.Monetary(
+        compute="_compute_net_to_cancel_amount",
+        string="Neto a cancelar",
+        store=True,
+        help="Facturas a cancelar menos medios de pago. "
+             "Positivo = queda deuda; negativo = sobrante.",
     )
     advance_amount = fields.Monetary(
         string="Anticipo sin factura",
@@ -164,11 +180,40 @@ class AccountPaymentGroup(models.Model):
                 invoice_lines.mapped("amount_residual")
             )
 
+    @api.depends("invoices_to_cancel_amount", "payments_amount")
+    def _compute_net_to_cancel_amount(self):
+        for group in self:
+            group.net_to_cancel_amount = (
+                group.invoices_to_cancel_amount - group.payments_amount
+            )
+
     @api.onchange("to_pay_move_line_ids")
     def _onchange_reset_advance(self):
         for group in self:
             if group.invoices_to_cancel_amount:
                 group.advance_amount = 0.0
+
+    @api.onchange("partner_type", "payment_type", "company_id")
+    def _onchange_autoselect_book(self):
+        for group in self:
+            if group.book_id and (
+                group.book_id.partner_type != group.partner_type
+                or group.book_id.payment_type != group.payment_type
+                or (
+                    group.book_id.company_id
+                    and group.book_id.company_id != group.company_id
+                )
+            ):
+                group.book_id = False
+            if not group.book_id and group.partner_type and group.payment_type:
+                group.book_id = self.env["account.payment.group.book"].search([
+                    ("partner_type", "=", group.partner_type),
+                    ("payment_type", "=", group.payment_type),
+                    "|",
+                    ("company_id", "=", group.company_id.id),
+                    ("company_id", "=", False),
+                    ("active", "=", True),
+                ], limit=1)
 
     def _get_partner_open_account_domain(self):
         """Domain sobre account.move.line de pendientes del tercero en su
@@ -210,13 +255,18 @@ class AccountPaymentGroup(models.Model):
             "context": {"create": False, "search_default_group_by_move": 1},
         }
 
-    def _get_sequence_code(self):
+    def _get_next_sequence_number(self):
+        """Devuelve el próximo número del talonario, o del fallback por
+        tipo si el recibo no tiene talonario asignado (compatibilidad)."""
         self.ensure_one()
-        return (
+        if self.book_id:
+            return self.book_id.sequence_id.next_by_id()
+        fallback_code = (
             "account.payment.group.inbound"
             if self.payment_type == "inbound"
             else "account.payment.group.outbound"
         )
+        return self.env["ir.sequence"].next_by_code(fallback_code)
 
     def _get_counterpart_lines(self):
         self.ensure_one()
@@ -235,12 +285,12 @@ class AccountPaymentGroup(models.Model):
             if not group.payment_ids:
                 raise UserError(_("Agregá al menos un medio de pago antes de confirmar."))
 
-            seq_code = group._get_sequence_code()
-            name = self.env["ir.sequence"].next_by_code(seq_code)
+            name = group._get_next_sequence_number()
             if not name:
                 raise UserError(_(
-                    "No se encontró la secuencia '%s'. Verificá que el módulo esté bien cargado."
-                ) % seq_code)
+                    "No se pudo obtener el próximo número. "
+                    "Verificá que el talonario tenga una secuencia asignada."
+                ))
 
             draft_payments = group.payment_ids.filtered(lambda p: p.state == "draft")
             if draft_payments:
