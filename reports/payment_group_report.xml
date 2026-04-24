@@ -17,14 +17,17 @@
     <template id="report_payment_group_document">
         <t t-call="web.external_layout">
             <div class="page">
-                <div class="row">
-                    <div class="col-12 text-center">
-                        <h2>
-                            <span t-if="o.payment_type == 'inbound'">Recibo</span>
-                            <span t-else="">Orden de pago</span>
-                            <t t-esc="' '"/>
-                            <span t-field="o.name"/>
-                        </h2>
+                <div style="position: relative; min-height: 60px;">
+                    <div style="position: absolute; top: 0; right: 0;">
+                        <div style="border: 2px solid #000; padding: 6px 14px; font-size: 1.15em;">
+                            <strong>Nro: <span t-field="o.name"/></strong>
+                        </div>
+                    </div>
+                    <div class="text-center">
+                        <h1 style="margin: 0; letter-spacing: 2px;">
+                            <span t-if="o.payment_type == 'inbound'">RECIBO</span>
+                            <span t-else="">ORDEN DE PAGO</span>
+                        </h1>
                     </div>
                 </div>
 
