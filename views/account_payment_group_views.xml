@@ -13,6 +13,9 @@
                             invisible="state == 'cancel'"/>
                     <button name="action_draft" type="object" string="Volver a borrador"
                             invisible="state != 'cancel'"/>
+                    <button name="%(yaguven_payment_group.action_report_payment_group)d"
+                            type="action" string="Imprimir" icon="fa-print"
+                            invisible="state != 'posted'"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,posted"/>
                 </header>
                 <sheet>
