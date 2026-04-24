@@ -91,9 +91,10 @@ class AccountPaymentGroup(models.Model):
         store=True,
     )
     advance_amount = fields.Monetary(
-        compute="_compute_advance_amount",
         string="Anticipo sin factura",
-        store=True,
+        help="Importe del anticipo a registrar cuando NO hay facturas "
+             "tildadas. Es la base desde la que se calculan las "
+             "retenciones que se carguen como medios de pago.",
     )
     partner_balance_amount = fields.Monetary(
         compute="_compute_partner_balance_amount",
@@ -163,17 +164,11 @@ class AccountPaymentGroup(models.Model):
                 invoice_lines.mapped("amount_residual")
             )
 
-    @api.depends("payments_amount", "invoices_to_cancel_amount")
-    def _compute_advance_amount(self):
+    @api.onchange("to_pay_move_line_ids")
+    def _onchange_reset_advance(self):
         for group in self:
-            # Sólo es anticipo si no se tildó ninguna factura: todo lo que
-            # entra por medios de pago queda sin factura asociada. Si hay
-            # facturas seleccionadas, el pago se aplica y no hay anticipo.
-            group.advance_amount = (
-                group.payments_amount
-                if not group.invoices_to_cancel_amount
-                else 0.0
-            )
+            if group.invoices_to_cancel_amount:
+                group.advance_amount = 0.0
 
     def _get_partner_open_account_domain(self):
         """Domain sobre account.move.line de pendientes del tercero en su
