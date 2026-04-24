@@ -47,6 +47,9 @@
                         <div t-if="o.communication">
                             <strong>Concepto:</strong> <span t-field="o.communication"/>
                         </div>
+                        <div>
+                            <strong>Nro:</strong> <span t-field="o.name"/>
+                        </div>
                         <div t-if="o.state != 'posted'" class="text-danger">
                             <strong>ESTADO:</strong> <span t-field="o.state"/>
                         </div>
