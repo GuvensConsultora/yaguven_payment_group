@@ -107,10 +107,14 @@ class AccountPaymentGroup(models.Model):
              "Positivo = queda deuda; negativo = sobrante.",
     )
     advance_amount = fields.Monetary(
+        compute="_compute_advance_amount",
+        store=True,
+        readonly=False,
         string="Anticipo sin factura",
-        help="Importe del anticipo a registrar cuando NO hay facturas "
-             "tildadas. Es la base desde la que se calculan las "
-             "retenciones que se carguen como medios de pago.",
+        help="Si no hay facturas tildadas, toma automáticamente el total "
+             "de medios de pago. Es la base desde la que se calculan las "
+             "retenciones que se carguen como medios de pago. Editable "
+             "manualmente cuando no hay facturas.",
     )
     partner_balance_amount = fields.Monetary(
         compute="_compute_partner_balance_amount",
@@ -257,11 +261,15 @@ class AccountPaymentGroup(models.Model):
                 abs(l.amount_residual) for l in group.to_pay_move_line_ids
             )
 
-    @api.onchange("to_pay_move_line_ids")
-    def _onchange_reset_advance(self):
+    @api.depends("payments_amount", "invoices_to_cancel_amount", "state")
+    def _compute_advance_amount(self):
         for group in self:
+            if group.state != "draft":
+                continue
             if group.invoices_to_cancel_amount:
                 group.advance_amount = 0.0
+            else:
+                group.advance_amount = group.payments_amount
 
     @api.onchange("partner_type", "payment_type", "company_id")
     def _onchange_autoselect_book(self):
