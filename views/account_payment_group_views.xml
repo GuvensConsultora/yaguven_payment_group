@@ -32,6 +32,13 @@
                             <field name="name" readonly="1"/>
                         </h1>
                     </div>
+                    <group name="totals_header" col="4">
+                        <field name="payments_amount"/>
+                        <field name="invoices_to_cancel_amount"/>
+                        <field name="to_pay_amount"/>
+                        <field name="advance_amount"
+                               readonly="state != 'draft' or invoices_to_cancel_amount != 0"/>
+                    </group>
                     <group>
                         <group>
                             <field name="partner_type" widget="radio"
@@ -104,16 +111,6 @@
                             </field>
                         </page>
                     </notebook>
-                    <group>
-                        <group/>
-                        <group class="oe_subtotal_footer">
-                            <field name="payments_amount"/>
-                            <field name="invoices_to_cancel_amount"/>
-                            <field name="to_pay_amount"/>
-                            <field name="advance_amount"
-                                   readonly="state != 'draft' or invoices_to_cancel_amount != 0"/>
-                        </group>
-                    </group>
                 </sheet>
                 <chatter/>
             </form>
