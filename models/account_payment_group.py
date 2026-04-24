@@ -163,10 +163,17 @@ class AccountPaymentGroup(models.Model):
                 invoice_lines.mapped("amount_residual")
             )
 
-    @api.depends("payments_amount", "to_pay_amount")
+    @api.depends("payments_amount", "invoices_to_cancel_amount")
     def _compute_advance_amount(self):
         for group in self:
-            group.advance_amount = group.payments_amount - group.to_pay_amount
+            # Sólo es anticipo si no se tildó ninguna factura: todo lo que
+            # entra por medios de pago queda sin factura asociada. Si hay
+            # facturas seleccionadas, el pago se aplica y no hay anticipo.
+            group.advance_amount = (
+                group.payments_amount
+                if not group.invoices_to_cancel_amount
+                else 0.0
+            )
 
     def _get_partner_open_account_domain(self):
         """Domain sobre account.move.line de pendientes del tercero en su
