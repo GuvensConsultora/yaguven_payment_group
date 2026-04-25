@@ -537,6 +537,17 @@ class AccountPaymentGroup(models.Model):
             group._check_anticipo_balance()
             group._apply_withholdings_to_target_payment()
 
+            # _apply_withholdings → _generate_journal_entry crea el move
+            # del target payment en 'draft' y deja al payment en
+            # 'in_process'. Hay que postear ese move explícitamente para
+            # que las base lines sean visibles a futuras retenciones del
+            # mismo período (RG 830 acumulado mensual filtra por
+            # parent_state='posted').
+            for pay in group.payment_ids.filtered(
+                lambda p: p.move_id and p.move_id.state == "draft"
+            ):
+                pay.move_id.action_post()
+
             draft_payments = group.payment_ids.filtered(lambda p: p.state == "draft")
             if draft_payments:
                 draft_payments.action_post()
