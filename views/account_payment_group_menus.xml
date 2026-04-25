@@ -22,4 +22,10 @@
               action="action_account_payment_group_supplier"
               sequence="20"/>
 
+    <menuitem id="menu_sicore_export_wizard"
+              name="Exportar SICORE (retenciones Ganancias)"
+              parent="account.menu_finance_reports"
+              action="action_sicore_export_wizard"
+              sequence="80"/>
+
 </odoo>

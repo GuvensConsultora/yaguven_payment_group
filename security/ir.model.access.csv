@@ -5,3 +5,4 @@ access_account_payment_group_book_user,account.payment.group.book user,model_acc
 access_account_payment_group_book_manager,account.payment.group.book manager,model_account_payment_group_book,account.group_account_manager,1,1,1,1
 access_account_payment_group_withholding_user,account.payment.group.withholding user,model_account_payment_group_withholding,account.group_account_invoice,1,1,1,1
 access_account_payment_group_withholding_manager,account.payment.group.withholding manager,model_account_payment_group_withholding,account.group_account_manager,1,1,1,1
+access_sicore_export_wizard_user,sicore.export.wizard user,model_sicore_export_wizard,account.group_account_invoice,1,1,1,1
