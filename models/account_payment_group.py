@@ -284,15 +284,30 @@ class AccountPaymentGroup(models.Model):
                 abs(l.amount_residual) for l in group.to_pay_move_line_ids
             )
 
-    @api.depends("payments_amount", "invoices_to_cancel_amount", "state")
+    @api.depends(
+        "payments_amount", "invoices_to_cancel_amount", "state",
+        "withholding_ids",
+    )
     def _compute_advance_amount(self):
+        """Auto-completa el bruto del anticipo en el caso simple (sin
+        retenciones): advance = total medios de pago.
+
+        Cuando hay retenciones tildadas, NO se sobreescribe: el bruto
+        ≠ payments_amount (payments es el neto cash post-retención).
+        El usuario carga advance manualmente como la obligación total
+        que está cancelando, y la retención se calcula sobre eso (RG 830).
+        El depends sobre `withholding_ids` (records, no `.amount`) evita
+        ciclo con _compute_amount → _compute_base_amount → advance.
+        """
         for group in self:
             if group.state != "draft":
                 continue
             if group.invoices_to_cancel_amount:
                 group.advance_amount = 0.0
-            else:
-                group.advance_amount = group.payments_amount
+                continue
+            if group.withholding_ids:
+                continue
+            group.advance_amount = group.payments_amount
 
     @api.onchange("partner_type", "payment_type", "company_id")
     def _onchange_autoselect_book(self):
@@ -384,6 +399,40 @@ class AccountPaymentGroup(models.Model):
                 and not l.reconciled
             )
         )
+
+    def _check_anticipo_balance(self):
+        """En anticipos con retención, validar que el bruto cuadre.
+
+        RG 830 calcula la retención sobre el bruto. Si el usuario cargó
+        retenciones y el `advance_amount` (bruto) no iguala
+        `payments_amount + withholdings_amount` (neto cash + retenciones),
+        el cálculo está descalibrado: o la base de la retención no
+        refleja la obligación real, o el usuario olvidó actualizar uno
+        de los lados.
+        """
+        self.ensure_one()
+        if self.invoices_to_cancel_amount:
+            return
+        if not self.withholding_ids:
+            return
+        expected = self.payments_amount + self.withholdings_amount
+        diff = self.advance_amount - expected
+        if not self.currency_id.is_zero(diff):
+            raise UserError(_(
+                "Anticipo descuadrado.\n"
+                "Anticipo (bruto)         : %(adv)s\n"
+                "Medios de pago (neto)    : %(pay)s\n"
+                "Retenciones              : %(wth)s\n"
+                "Diferencia               : %(diff)s\n\n"
+                "El bruto del anticipo (campo \"Anticipo sin factura\") "
+                "debe ser igual al neto pagado más las retenciones "
+                "practicadas. Ajustá ese campo para que represente la "
+                "obligación total que estás cancelando con el partner — "
+                "RG 830 calcula la retención sobre ese bruto, no sobre "
+                "el efectivo neto.",
+                adv=self.advance_amount, pay=self.payments_amount,
+                wth=self.withholdings_amount, diff=diff,
+            ))
 
     def _apply_withholdings_to_target_payment(self):
         """Genera el asiento del payment target con las write-off lines
@@ -485,6 +534,7 @@ class AccountPaymentGroup(models.Model):
                     "Verificá que el talonario tenga una secuencia asignada."
                 ))
 
+            group._check_anticipo_balance()
             group._apply_withholdings_to_target_payment()
 
             draft_payments = group.payment_ids.filtered(lambda p: p.state == "draft")

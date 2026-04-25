@@ -48,14 +48,28 @@ class AccountPaymentGroupWithholding(models.Model):
         readonly=False,
     )
 
-    @api.depends("payment_group_id.invoices_to_cancel_amount", "tax_id")
+    @api.depends(
+        "payment_group_id.invoices_to_cancel_amount",
+        "payment_group_id.advance_amount",
+        "tax_id",
+    )
     def _compute_base_amount(self):
-        """Base imponible default: total de facturas a cancelar.
+        """Base imponible RG 830 art. 25 — neto sin IVA.
 
-        Para IIBB total se usa el bruto; para el resto, base imponible neta
-        del IVA (replica el cálculo del wizard nativo: bruto * untaxed/total
-        de las facturas asociadas). Si no hay facturas (anticipo), cae al
-        importe total de medios de pago.
+        Con facturas tildadas: base = invoices_to_cancel × untaxed/total
+        (proporción de neto sin IVA del conjunto de comprobantes).
+
+        Sin facturas (anticipo): base = advance_amount (lo que el usuario
+        declara como obligación bruta a cancelar). Fallback a
+        payments_amount si advance todavía no fue cargado — vale para
+        anticipos sin retención porque advance auto = payments en ese caso.
+
+        Por qué advance y no payments: en el caso anticipo CON retención,
+        payments_amount es el neto efectivamente abonado al partner
+        (después de descontar retenciones), no la base imponible.
+        Calcular sobre payments subestima la retención (era el bug
+        análogo de Lupatini). El bruto es advance_amount, que el usuario
+        carga manualmente.
         """
         for w in self:
             group = w.payment_group_id
@@ -63,7 +77,11 @@ class AccountPaymentGroupWithholding(models.Model):
                 w.base_amount = 0.0
                 continue
             if w.tax_id.l10n_ar_tax_type == "iibb_total":
-                w.base_amount = group.invoices_to_cancel_amount or group.payments_amount
+                w.base_amount = (
+                    group.invoices_to_cancel_amount
+                    or group.advance_amount
+                    or group.payments_amount
+                )
                 continue
             inv_lines = group.to_pay_move_line_ids.filtered(
                 lambda l: l.move_id.move_type in (
@@ -75,7 +93,7 @@ class AccountPaymentGroupWithholding(models.Model):
             if total:
                 w.base_amount = group.invoices_to_cancel_amount * untaxed / total
             else:
-                w.base_amount = group.payments_amount
+                w.base_amount = group.advance_amount or group.payments_amount
 
     @api.depends("base_amount", "tax_id")
     def _compute_amount(self):
