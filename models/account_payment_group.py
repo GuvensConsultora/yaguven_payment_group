@@ -436,14 +436,30 @@ class AccountPaymentGroup(models.Model):
 
     def _apply_withholdings_to_target_payment(self):
         """Genera el asiento del payment target con las write-off lines
-        de retención embebidas, usando el mismo flujo que el wizard nativo
-        (`_generate_journal_entry(write_off_line_vals=...)`).
+        de retención embebidas (patrón ADHOC adaptado, no Odoo nativo).
 
-        Elige como target el payment de mayor importe (típicamente la pata
-        de efectivo/transferencia) para no tocar moves de cheques que
-        tienen su propia estructura. El usuario debe haber cargado en el
-        target un `amount` igual al neto (facturas − retenciones); el
-        método nativo `_prepare_move_lines_per_type` ajusta el counterpart
+        Diseño: una línea por retención con `tax_line_id` y
+        `tax_base_amount` setados. NO genera líneas dummy en la cuenta
+        base de retención — la base se persiste como atributo de la
+        línea (`tax_base_amount`) y como atributo del registro
+        `account.payment.group.withholding`. El motor de impuestos de
+        Odoo encuentra ambos datos sin necesidad del par de líneas
+        compensatorias en la cuenta puente.
+
+        Por qué este patrón y no el del wizard nativo Odoo 19:
+        ADHOC (referencia de mercado en AR) nunca usó el patrón de base
+        lines. El nativo lo agrega sólo para que reportes que iteran
+        `tax_ids` encuentren la base. En Camilleti decidimos no usar
+        ADHOC y nuestros propios reportes (acumulado RG 830, SICORE,
+        certificado, listado del período) leen base desde
+        `tax_line_id` + `tax_base_amount` directamente, así que las
+        dummy lines no aportan nada y son ruido visual.
+
+        Elige como target el payment de mayor importe (típicamente la
+        pata de efectivo/transferencia) para no tocar moves de cheques
+        que tienen su propia estructura. El usuario debe haber cargado
+        en el target un `amount` igual al neto (facturas − retenciones);
+        `_prepare_move_lines_per_type` ajusta el counterpart
         automáticamente para que el move quede balanceado.
         """
         self.ensure_one()
@@ -471,13 +487,6 @@ class AccountPaymentGroup(models.Model):
                 "account.payment.method.line.payment_account_id)."
             ))
 
-        base_account = self.company_id.l10n_ar_tax_base_account_id
-        if not base_account:
-            raise UserError(_(
-                "Configurá la cuenta base de retención en la compañía "
-                "(Configuración → Contabilidad → Cuenta base retención AR)."
-            ))
-
         sign = 1 if self.partner_type == "customer" else -1
         self.withholding_ids._ensure_name()
 
@@ -491,28 +500,6 @@ class AccountPaymentGroup(models.Model):
                 "balance": sign * amount,
                 "tax_base_amount": sign * w.base_amount,
                 "tax_repartition_line_id": repartition_id,
-                "currency_id": target.currency_id.id,
-            })
-
-        for base in set(self.withholding_ids.mapped("base_amount")):
-            wlines = self.withholding_ids.filtered(
-                lambda x: x.base_amount == base
-            )
-            label = ", ".join(wlines.mapped("name"))
-            signed = sign * base
-            write_off_line_vals.append({
-                "name": label,
-                "tax_ids": [(6, 0, wlines.mapped("tax_id").ids)],
-                "account_id": base_account.id,
-                "balance": signed,
-                "amount_currency": signed,
-                "currency_id": target.currency_id.id,
-            })
-            write_off_line_vals.append({
-                "name": label,
-                "account_id": base_account.id,
-                "balance": -signed,
-                "amount_currency": -signed,
                 "currency_id": target.currency_id.id,
             })
 

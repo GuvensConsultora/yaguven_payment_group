@@ -106,7 +106,14 @@ class AccountPaymentGroupWithholding(models.Model):
                 w.amount = w._tax_compute_all_helper()[0]
 
     def _tax_compute_all_helper(self):
-        """Replica `l10n_ar.payment.register.withholding._tax_compute_all_helper`.
+        """Calcula la retención del período aplicando RG 830.
+
+        Acumulado mensual: una sola query sobre AML con `tax_line_id`
+        del mismo régimen y partner en el mes calendario, leyendo
+        balance (= retenciones previas) y `tax_base_amount` (= base
+        previa). No iteramos `tax_ids` porque nuestro asiento no genera
+        líneas dummy de base — la base vive como atributo de la línea
+        de retención (patrón estilo ADHOC).
 
         Devuelve (amount, account_id, tax_repartition_line_id).
         """
@@ -117,7 +124,7 @@ class AccountPaymentGroupWithholding(models.Model):
         if self.tax_id.l10n_ar_tax_type in ("earnings", "earnings_scale"):
             to_date = group.payment_date or date.today()
             from_date = to_date + relativedelta(day=1)
-            domain_w = [
+            domain = [
                 ("company_id", "child_of", self.tax_id.company_id.id),
                 ("parent_state", "=", "posted"),
                 ("tax_line_id.l10n_ar_code", "=", self.tax_id.l10n_ar_code),
@@ -126,23 +133,13 @@ class AccountPaymentGroupWithholding(models.Model):
                 ("partner_id", "=", group.partner_id.commercial_partner_id.id),
                 ("date", "<=", to_date), ("date", ">=", from_date),
             ]
-            grp_w = self.env["account.move.line"].sudo()._read_group(
-                domain_w, ["partner_id"], ["balance:sum"]
+            prev_lines = self.env["account.move.line"].sudo().search(domain)
+            same_period_withholdings = sum(
+                abs(l.balance) for l in prev_lines
             )
-            same_period_withholdings = abs(grp_w[0][1]) if grp_w else 0.0
-            domain_b = [
-                ("company_id", "child_of", self.tax_id.company_id.id),
-                ("parent_state", "=", "posted"),
-                ("tax_ids.l10n_ar_code", "=", self.tax_id.l10n_ar_code),
-                ("tax_ids.l10n_ar_tax_type", "in",
-                 ["earnings", "earnings_scale"]),
-                ("partner_id", "=", group.partner_id.commercial_partner_id.id),
-                ("date", "<=", to_date), ("date", ">=", from_date),
-            ]
-            grp_b = self.env["account.move.line"].sudo()._read_group(
-                domain_b, ["partner_id"], ["balance:sum"]
+            same_period_base = sum(
+                abs(l.tax_base_amount) for l in prev_lines
             )
-            same_period_base = abs(grp_b[0][1]) if grp_b else 0.0
             net_amount = self.base_amount + same_period_base
         else:
             net_amount = self.base_amount
