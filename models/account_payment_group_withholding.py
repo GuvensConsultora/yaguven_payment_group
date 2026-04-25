@@ -41,13 +41,11 @@ class AccountPaymentGroupWithholding(models.Model):
         compute="_compute_base_amount",
         store=True,
         readonly=False,
-        required=True,
     )
     amount = fields.Monetary(
         compute="_compute_amount",
         store=True,
         readonly=False,
-        required=True,
     )
 
     @api.depends("payment_group_id.invoices_to_cancel_amount", "tax_id")
