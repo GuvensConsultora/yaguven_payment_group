@@ -186,3 +186,77 @@ class AccountPaymentGroupWithholding(models.Model):
                     "Cargá el número de retención para %s (la tax no tiene "
                     "secuencia configurada)."
                 ) % w.tax_id.name)
+
+    # ── Helpers para el reporte certificado de retención (Anexo VIII RG 5423) ──
+
+    def _is_ganancias(self):
+        self.ensure_one()
+        return self.tax_id.l10n_ar_tax_type in ("earnings", "earnings_scale")
+
+    def _is_iibb(self):
+        self.ensure_one()
+        return self.tax_id.l10n_ar_tax_type in ("iibb_untaxed", "iibb_total")
+
+    def get_withholding_type_label(self):
+        self.ensure_one()
+        if self._is_ganancias():
+            return _("Impuesto a las Ganancias — RG 830")
+        if self._is_iibb():
+            return _("Ingresos Brutos")
+        if self.tax_id.l10n_ar_withholding_payment_type:
+            return self.tax_id.name
+        return self.tax_id.name or _("Retención")
+
+    def get_alicuota_label(self):
+        """Alícuota legible: % fijo o leyenda 'según escala'."""
+        self.ensure_one()
+        if self.tax_id.l10n_ar_tax_type == "earnings_scale":
+            return _("Según escala (RG 830 anexo VIII)")
+        if self.base_amount:
+            pct = (self.amount / self.base_amount) * 100.0
+            return "{:.2f} %".format(pct)
+        if self.tax_id.amount_type == "percent":
+            return "{:.2f} %".format(self.tax_id.amount)
+        return "—"
+
+    def get_regimen_label(self):
+        self.ensure_one()
+        code = self.tax_id.l10n_ar_code or ""
+        name = self.tax_id.name or ""
+        if code:
+            return "{} — {}".format(code, name)
+        return name
+
+    def get_certificate_invoices(self):
+        """Comprobantes (facturas/NCs) asociados al group del cual proviene
+        esta retención. Filtra los AML conciliados con el move del payment
+        target.
+        """
+        self.ensure_one()
+        group = self.payment_group_id
+        if not group:
+            return self.env["account.move"]
+        return group.matched_move_line_ids.move_id.filtered(
+            lambda mv: mv.move_type in (
+                "out_invoice", "in_invoice", "out_refund", "in_refund"
+            )
+        )
+
+    def get_certificate_op_name(self):
+        self.ensure_one()
+        return (
+            self.payment_group_id.name
+            if self.payment_group_id and self.payment_group_id.name
+            else ""
+        )
+
+    def action_print_certificate(self):
+        self.ensure_one()
+        if self.payment_group_id.state != "posted":
+            raise UserError(_(
+                "El certificado de retención sólo se emite una vez "
+                "confirmado el recibo / orden de pago."
+            ))
+        return self.env.ref(
+            "yaguven_payment_group.action_report_withholding_certificate"
+        ).report_action(self)

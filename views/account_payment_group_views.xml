@@ -195,6 +195,11 @@
                                     <field name="name" string="Nro retención"/>
                                     <field name="base_amount"/>
                                     <field name="amount" sum="Total"/>
+                                    <button name="action_print_certificate"
+                                            type="object"
+                                            string="Certificado"
+                                            icon="fa-file-pdf-o"
+                                            invisible="parent.state != 'posted'"/>
                                     <field name="currency_id" column_invisible="1"/>
                                     <field name="company_id" column_invisible="1"/>
                                     <field name="partner_type" column_invisible="1"/>
