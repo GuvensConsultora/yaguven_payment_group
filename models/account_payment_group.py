@@ -289,23 +289,19 @@ class AccountPaymentGroup(models.Model):
         "withholding_ids",
     )
     def _compute_advance_amount(self):
-        """Auto-completa el bruto del anticipo en el caso simple (sin
-        retenciones): advance = total medios de pago.
+        """Auto-completa el bruto del anticipo en el caso simple
+        (sin facturas, sin retenciones): advance = payments_amount.
 
-        Cuando hay retenciones tildadas, NO se sobreescribe: el bruto
-        ≠ payments_amount (payments es el neto cash post-retención).
-        El usuario carga advance manualmente como la obligación total
-        que está cancelando, y la retención se calcula sobre eso (RG 830).
-        El depends sobre `withholding_ids` (records, no `.amount`) evita
-        ciclo con _compute_amount → _compute_base_amount → advance.
+        En cualquier otro caso (hay facturas, o hay retenciones, o
+        ambos), el usuario controla el campo manualmente: ese es el
+        flujo correcto para mezclar cancelación de facturas con un
+        anticipo en el mismo comprobante (RG 830 lo prevé), y para
+        anticipos con retención donde el bruto ≠ neto cash.
         """
         for group in self:
             if group.state != "draft":
                 continue
-            if group.invoices_to_cancel_amount:
-                group.advance_amount = 0.0
-                continue
-            if group.withholding_ids:
+            if group.invoices_to_cancel_amount or group.withholding_ids:
                 continue
             group.advance_amount = group.payments_amount
 
@@ -401,37 +397,41 @@ class AccountPaymentGroup(models.Model):
         )
 
     def _check_anticipo_balance(self):
-        """En anticipos con retención, validar que el bruto cuadre.
+        """Si hay retenciones, validar que lo que se cancela cuadre con
+        lo que se entrega al partner.
 
-        RG 830 calcula la retención sobre el bruto. Si el usuario cargó
-        retenciones y el `advance_amount` (bruto) no iguala
-        `payments_amount + withholdings_amount` (neto cash + retenciones),
-        el cálculo está descalibrado: o la base de la retención no
-        refleja la obligación real, o el usuario olvidó actualizar uno
-        de los lados.
+        Bruto cancelado = invoices_to_cancel_amount + advance_amount
+        Neto entregado  = payments_amount + withholdings_amount
+
+        RG 830 calcula la retención sobre el bruto. Si los dos lados no
+        coinciden, o la base de la retención no refleja la obligación
+        real, o el usuario olvidó ajustar el anticipo o los medios de
+        pago. Cubre los tres casos: sólo facturas con retención, sólo
+        anticipo con retención, mixto facturas + anticipo + retención.
         """
         self.ensure_one()
-        if self.invoices_to_cancel_amount:
-            return
         if not self.withholding_ids:
             return
-        expected = self.payments_amount + self.withholdings_amount
-        diff = self.advance_amount - expected
+        bruto = self.invoices_to_cancel_amount + self.advance_amount
+        neto = self.payments_amount + self.withholdings_amount
+        diff = bruto - neto
         if not self.currency_id.is_zero(diff):
             raise UserError(_(
-                "Anticipo descuadrado.\n"
-                "Anticipo (bruto)         : %(adv)s\n"
-                "Medios de pago (neto)    : %(pay)s\n"
-                "Retenciones              : %(wth)s\n"
-                "Diferencia               : %(diff)s\n\n"
-                "El bruto del anticipo (campo \"Anticipo sin factura\") "
-                "debe ser igual al neto pagado más las retenciones "
-                "practicadas. Ajustá ese campo para que represente la "
-                "obligación total que estás cancelando con el partner — "
-                "RG 830 calcula la retención sobre ese bruto, no sobre "
-                "el efectivo neto.",
-                adv=self.advance_amount, pay=self.payments_amount,
-                wth=self.withholdings_amount, diff=diff,
+                "Comprobante descuadrado.\n"
+                "Bruto a cancelar (facturas + anticipo) : %(bruto)s\n"
+                "  - Facturas a cancelar               : %(inv)s\n"
+                "  - Anticipo sin factura              : %(adv)s\n"
+                "Entregado al partner (cash + retenc.)  : %(neto)s\n"
+                "  - Medios de pago (neto)             : %(pay)s\n"
+                "  - Retenciones                       : %(wth)s\n"
+                "Diferencia                            : %(diff)s\n\n"
+                "El bruto debe igualar al neto. Ajustá el anticipo o los "
+                "medios de pago para que cuadre — RG 830 calcula la "
+                "retención sobre el bruto, no sobre el cash neto.",
+                bruto=bruto, inv=self.invoices_to_cancel_amount,
+                adv=self.advance_amount, neto=neto,
+                pay=self.payments_amount, wth=self.withholdings_amount,
+                diff=diff,
             ))
 
     def _apply_withholdings_to_target_payment(self):

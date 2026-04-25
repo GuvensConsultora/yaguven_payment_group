@@ -77,11 +77,8 @@ class AccountPaymentGroupWithholding(models.Model):
                 w.base_amount = 0.0
                 continue
             if w.tax_id.l10n_ar_tax_type == "iibb_total":
-                w.base_amount = (
-                    group.invoices_to_cancel_amount
-                    or group.advance_amount
-                    or group.payments_amount
-                )
+                target = group.invoices_to_cancel_amount + group.advance_amount
+                w.base_amount = target or group.payments_amount
                 continue
             inv_lines = group.to_pay_move_line_ids.filtered(
                 lambda l: l.move_id.move_type in (
@@ -90,10 +87,15 @@ class AccountPaymentGroupWithholding(models.Model):
             )
             untaxed = sum(inv_lines.mapped("move_id.amount_untaxed"))
             total = sum(inv_lines.mapped("move_id.amount_total"))
-            if total:
-                w.base_amount = group.invoices_to_cancel_amount * untaxed / total
+            invoice_base = (
+                group.invoices_to_cancel_amount * untaxed / total
+                if total else 0.0
+            )
+            advance_base = group.advance_amount  # bruto sin IVA discriminado
+            if invoice_base or advance_base:
+                w.base_amount = invoice_base + advance_base
             else:
-                w.base_amount = group.advance_amount or group.payments_amount
+                w.base_amount = group.payments_amount
 
     @api.depends("base_amount", "tax_id")
     def _compute_amount(self):
