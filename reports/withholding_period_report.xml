@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Listado de retenciones del período (auxiliar humano al TXT SICORE).
+         Imprime sobre el wizard sicore.export.wizard usando los mismos
+         filtros (date_from/date_to/tax_id). Útil para revisar la
+         declaración antes de subirla al aplicativo. -->
+    <record id="action_report_sicore_listing" model="ir.actions.report">
+        <field name="name">Listado retenciones del período</field>
+        <field name="model">sicore.export.wizard</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">yaguven_payment_group.report_sicore_listing</field>
+        <field name="report_file">yaguven_payment_group.report_sicore_listing</field>
+        <field name="print_report_name">'Retenciones_%s' % object.period</field>
+    </record>
+
+    <template id="report_sicore_listing_document">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="wiz">
+                <t t-set="data" t-value="wiz._build_pdf_data()"/>
+                <t t-set="rows" t-value="data[0]"/>
+                <t t-set="total_retenido" t-value="data[1]"/>
+                <t t-set="company" t-value="wiz.env.company"/>
+
+                <t t-call="web.external_layout">
+                    <div class="page" style="font-family: Arial, sans-serif; font-size: 10px;">
+
+                        <div style="text-align: center; margin: 8px 0 14px 0;">
+                            <h2 style="margin: 0;">Retenciones del Período</h2>
+                            <div style="font-size: 11px; color: #555; margin-top: 4px;">
+                                Del <span t-esc="wiz.date_from" t-options='{"widget": "date"}'/>
+                                al <span t-esc="wiz.date_to" t-options='{"widget": "date"}'/>
+                            </div>
+                        </div>
+
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 10px;">
+                            <tr>
+                                <td style="padding: 2px 6px;">
+                                    <strong>Agente de retención:</strong>
+                                    <span t-field="company.name"/>
+                                    (CUIT <span t-field="company.vat"/>)
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 2px 6px;">
+                                    <strong>Régimen:</strong>
+                                    <span t-field="wiz.tax_id.name"/>
+                                    — código impuesto ARCA <span t-esc="wiz.cod_impuesto"/>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <table class="table table-sm table-bordered" style="font-size: 10px;">
+                            <thead>
+                                <tr style="background-color: #DCE6F2;">
+                                    <th>Fecha</th>
+                                    <th>Proveedor</th>
+                                    <th>CUIT</th>
+                                    <th>Nro retención</th>
+                                    <th>OP</th>
+                                    <th class="text-end">Base</th>
+                                    <th class="text-end">Retenido</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="rows" t-as="r">
+                                    <tr>
+                                        <td><span t-esc="r['date']" t-options='{"widget": "date"}'/></td>
+                                        <td><span t-esc="r['partner_name']"/></td>
+                                        <td><span t-esc="r['cuit']"/></td>
+                                        <td><span t-esc="r['withholding_number']"/></td>
+                                        <td><span t-esc="r['op_name']"/></td>
+                                        <td class="text-end">
+                                            <span t-esc="r['base_amount']" t-options='{"widget": "monetary", "display_currency": company.currency_id}'/>
+                                        </td>
+                                        <td class="text-end">
+                                            <span t-esc="r['amount']" t-options='{"widget": "monetary", "display_currency": company.currency_id}'/>
+                                        </td>
+                                    </tr>
+                                    <t t-if="r['invoices']">
+                                        <tr style="background-color: #f8f9fa;">
+                                            <td colspan="7" style="padding-left: 30px; font-size: 9px;">
+                                                <em>Comprobantes asociados:</em>
+                                                <t t-foreach="r['invoices']" t-as="inv">
+                                                    <span style="margin-left: 8px;">
+                                                        <span t-esc="inv['name']"/>
+                                                        (<span t-esc="inv['date']" t-options='{"widget": "date"}'/>) —
+                                                        Neto: <span t-esc="inv['untaxed']" t-options='{"widget": "monetary", "display_currency": company.currency_id}'/>
+                                                        — Total: <span t-esc="inv['total']" t-options='{"widget": "monetary", "display_currency": company.currency_id}'/>
+                                                    </span>
+                                                    <br/>
+                                                </t>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </t>
+                            </tbody>
+                            <tfoot>
+                                <tr style="background-color: #DCE6F2; font-weight: bold;">
+                                    <td colspan="6" class="text-end">TOTAL RETENIDO:</td>
+                                    <td class="text-end">
+                                        <span t-esc="total_retenido" t-options='{"widget": "monetary", "display_currency": company.currency_id}'/>
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+
+                        <div style="margin-top: 16px; font-size: 9px; color: #666;">
+                            Listado auxiliar para revisión previa al armado del F.2003 SICORE.
+                            Cada línea corresponde a una retención registrada en el módulo.
+                            Si el monto de la retención abarca varias facturas, se prorratea
+                            al armar el TXT — este listado muestra el monto total por retención.
+                        </div>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+
+    <template id="report_sicore_listing">
+        <t t-call="yaguven_payment_group.report_sicore_listing_document"/>
+    </template>
+
+</odoo>

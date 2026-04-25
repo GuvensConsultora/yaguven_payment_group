@@ -30,8 +30,11 @@
                 </sheet>
                 <footer>
                     <button name="action_generate" type="object"
-                            string="Generar" class="btn-primary"
+                            string="Generar TXT" class="btn-primary"
                             invisible="state == 'done'"/>
+                    <button name="action_print_listing" type="object"
+                            string="Imprimir listado PDF"
+                            class="btn-secondary"/>
                     <button special="cancel" string="Cerrar"/>
                 </footer>
             </form>

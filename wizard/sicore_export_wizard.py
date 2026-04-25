@@ -276,6 +276,47 @@ class SicoreExportWizard(models.TransientModel):
                 ))
         return "\r\n".join(lines) + "\r\n"
 
+    # ── Reporte PDF del período (auxiliar humano al TXT) ──────────────────
+
+    def _build_pdf_data(self):
+        """Datos estructurados para el QWeb del listado:
+        lista de dicts por retención + total del período.
+        """
+        self.ensure_one()
+        wths = self._get_withholdings()
+        rows = []
+        total = 0.0
+        for w in wths:
+            group = w.payment_group_id
+            partner = group.partner_id.commercial_partner_id
+            invoices = self._get_invoices_for_withholding(w)
+            rows.append({
+                "date": group.payment_date,
+                "partner_name": partner.name or "",
+                "cuit": partner.vat or "",
+                "withholding_number": w.name or "",
+                "regimen": w.get_regimen_label() if hasattr(w, "get_regimen_label") else (w.tax_id.name or ""),
+                "base_amount": w.base_amount,
+                "amount": w.amount,
+                "op_name": group.name or "",
+                "invoices": [{
+                    "name": inv.name or "",
+                    "date": inv.invoice_date,
+                    "untaxed": inv.amount_untaxed,
+                    "total": inv.amount_total,
+                } for inv in invoices],
+            })
+            total += w.amount
+        return rows, total
+
+    def action_print_listing(self):
+        self.ensure_one()
+        if self.state != "done":
+            self.action_generate()
+        return self.env.ref(
+            "yaguven_payment_group.action_report_sicore_listing"
+        ).report_action(self)
+
     def action_generate(self):
         self.ensure_one()
         if self.date_from > self.date_to:
