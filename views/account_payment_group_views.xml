@@ -63,6 +63,9 @@
                             <field name="invoices_to_cancel_amount"/>
                             <field name="payments_amount"
                                    string="− Medios de pago"/>
+                            <field name="withholdings_amount"
+                                   string="− Retenciones"
+                                   invisible="not withholdings_amount"/>
                             <field name="net_to_cancel_amount"
                                    string="= Neto a cancelar"/>
                         </group>
@@ -182,6 +185,20 @@
                                         </notebook>
                                     </sheet>
                                 </form>
+                            </field>
+                        </page>
+                        <!-- Paso 4 (opcional): retenciones AR -->
+                        <page string="Retenciones" name="withholdings">
+                            <field name="withholding_ids" readonly="state != 'draft'">
+                                <list editable="bottom">
+                                    <field name="tax_id"/>
+                                    <field name="name" string="Nro retención"/>
+                                    <field name="base_amount"/>
+                                    <field name="amount" sum="Total"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                    <field name="company_id" column_invisible="1"/>
+                                    <field name="partner_type" column_invisible="1"/>
+                                </list>
                             </field>
                         </page>
                         <page string="Líneas conciliadas" name="matched"

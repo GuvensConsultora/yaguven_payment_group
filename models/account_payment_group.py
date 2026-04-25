@@ -66,6 +66,11 @@ class AccountPaymentGroup(models.Model):
         string="Medios de pago",
         check_company=True,
     )
+    withholding_ids = fields.One2many(
+        "account.payment.group.withholding",
+        "payment_group_id",
+        string="Retenciones",
+    )
     to_pay_move_line_ids = fields.Many2many(
         "account.move.line",
         string="Comprobantes a cancelar",
@@ -87,6 +92,11 @@ class AccountPaymentGroup(models.Model):
     payments_amount = fields.Monetary(
         compute="_compute_payments_amount",
         string="Total medios de pago",
+        store=True,
+    )
+    withholdings_amount = fields.Monetary(
+        compute="_compute_withholdings_amount",
+        string="Total retenciones",
         store=True,
     )
     to_pay_amount = fields.Monetary(
@@ -163,6 +173,11 @@ class AccountPaymentGroup(models.Model):
             group.payments_amount = sum(
                 p.amount for p in group.payment_ids if p.state != "cancel"
             )
+
+    @api.depends("withholding_ids.amount")
+    def _compute_withholdings_amount(self):
+        for group in self:
+            group.withholdings_amount = sum(group.withholding_ids.mapped("amount"))
 
     def _get_line_cancelled_amount(self, line):
         """Importe cancelado de `line` en este grupo.
@@ -245,11 +260,13 @@ class AccountPaymentGroup(models.Model):
                 doc_lines.mapped("amount_residual")
             )
 
-    @api.depends("invoices_to_cancel_amount", "payments_amount")
+    @api.depends("invoices_to_cancel_amount", "payments_amount", "withholdings_amount")
     def _compute_net_to_cancel_amount(self):
         for group in self:
             group.net_to_cancel_amount = (
-                group.invoices_to_cancel_amount - group.payments_amount
+                group.invoices_to_cancel_amount
+                - group.payments_amount
+                - group.withholdings_amount
             )
 
     @api.depends(
@@ -368,6 +385,106 @@ class AccountPaymentGroup(models.Model):
             )
         )
 
+    def _apply_withholdings_to_target_payment(self):
+        """Inyecta líneas de retención al move (en draft) de un payment del
+        group, replicando el patrón nativo `_create_payment_vals_from_wizard`.
+
+        Elige como target el payment de mayor importe (típicamente la pata
+        de efectivo/transferencia) para no contaminar moves de cheques que
+        tienen su propia estructura.
+        """
+        self.ensure_one()
+        if not self.withholding_ids:
+            return
+        if not self.payment_ids:
+            raise UserError(_(
+                "Las retenciones requieren al menos un medio de pago donde "
+                "imputar el asiento contable."
+            ))
+
+        target = self.payment_ids.sorted(
+            key=lambda p: p.amount, reverse=True
+        )[0]
+        move = target.move_id
+        if not move or move.state != "draft":
+            raise UserError(_(
+                "El asiento del medio de pago donde se imputan las "
+                "retenciones debe estar en borrador."
+            ))
+
+        base_account = self.company_id.l10n_ar_tax_base_account_id
+        if not base_account:
+            raise UserError(_(
+                "Configurá la cuenta base de retención en la compañía "
+                "(Configuración → Contabilidad → Cuenta base retención AR)."
+            ))
+
+        sign = 1 if self.partner_type == "customer" else -1
+
+        counterpart = move.line_ids.filtered(
+            lambda l: l.account_id.account_type in (
+                "asset_receivable", "liability_payable"
+            )
+        )
+        if len(counterpart) != 1:
+            raise UserError(_(
+                "No se pudo identificar la línea contable del partner "
+                "en el medio de pago. Estructura del asiento inesperada."
+            ))
+
+        self.withholding_ids._ensure_name()
+
+        new_lines = []
+        for w in self.withholding_ids:
+            amount, account_id, repartition_id = w._tax_compute_all_helper()
+            new_lines.append({
+                "name": w.name,
+                "account_id": account_id,
+                "amount_currency": sign * amount,
+                "balance": sign * amount,
+                "tax_base_amount": sign * w.base_amount,
+                "tax_repartition_line_id": repartition_id,
+                "currency_id": target.currency_id.id,
+                "partner_id": target.partner_id.id,
+                "move_id": move.id,
+            })
+
+        for base in set(self.withholding_ids.mapped("base_amount")):
+            wlines = self.withholding_ids.filtered(
+                lambda x: x.base_amount == base
+            )
+            label = ", ".join(wlines.mapped("name"))
+            signed = sign * base
+            new_lines.append({
+                "name": label,
+                "tax_ids": [(6, 0, wlines.mapped("tax_id").ids)],
+                "account_id": base_account.id,
+                "balance": signed,
+                "amount_currency": signed,
+                "currency_id": target.currency_id.id,
+                "partner_id": target.partner_id.id,
+                "move_id": move.id,
+            })
+            new_lines.append({
+                "name": label,
+                "account_id": base_account.id,
+                "balance": -signed,
+                "amount_currency": -signed,
+                "currency_id": target.currency_id.id,
+                "partner_id": target.partner_id.id,
+                "move_id": move.id,
+            })
+
+        total_w = sum(self.withholding_ids.mapped("amount"))
+        counterpart.with_context(check_move_validity=False).write({
+            "balance": counterpart.balance + (-sign * total_w),
+            "amount_currency":
+                counterpart.amount_currency + (-sign * total_w),
+        })
+        self.env["account.move.line"].with_context(
+            check_move_validity=False
+        ).create(new_lines)
+
     def action_post(self):
         for group in self:
             if group.state != "draft":
@@ -381,6 +498,8 @@ class AccountPaymentGroup(models.Model):
                     "No se pudo obtener el próximo número. "
                     "Verificá que el talonario tenga una secuencia asignada."
                 ))
+
+            group._apply_withholdings_to_target_payment()
 
             draft_payments = group.payment_ids.filtered(lambda p: p.state == "draft")
             if draft_payments:

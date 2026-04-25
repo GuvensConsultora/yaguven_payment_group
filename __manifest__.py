@@ -1,6 +1,6 @@
 {
     "name": "Yagüven Payment Group",
-    "version": "19.0.3.2.3",
+    "version": "19.0.3.3.0",
     "summary": "Recibo / Orden de pago que agrupa varios account.payment contra varias facturas",
     "description": """
 Agrupa múltiples account.payment nativos (efectivo, cheque, transferencia, retenciones AR)
@@ -17,6 +17,7 @@ para cheques). Sin dependencia de ADHOC.
         "account",
         "l10n_ar",
         "l10n_latam_check",
+        "l10n_ar_withholding",
     ],
     "data": [
         "security/ir.model.access.csv",

@@ -3,3 +3,5 @@ access_account_payment_group_user,account.payment.group user,model_account_payme
 access_account_payment_group_manager,account.payment.group manager,model_account_payment_group,account.group_account_manager,1,1,1,1
 access_account_payment_group_book_user,account.payment.group.book user,model_account_payment_group_book,account.group_account_invoice,1,0,0,0
 access_account_payment_group_book_manager,account.payment.group.book manager,model_account_payment_group_book,account.group_account_manager,1,1,1,1
+access_account_payment_group_withholding_user,account.payment.group.withholding user,model_account_payment_group_withholding,account.group_account_invoice,1,1,1,1
+access_account_payment_group_withholding_manager,account.payment.group.withholding manager,model_account_payment_group_withholding,account.group_account_manager,1,1,1,1
