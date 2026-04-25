@@ -386,12 +386,16 @@ class AccountPaymentGroup(models.Model):
         )
 
     def _apply_withholdings_to_target_payment(self):
-        """Inyecta líneas de retención al move (en draft) de un payment del
-        group, replicando el patrón nativo `_create_payment_vals_from_wizard`.
+        """Genera el asiento del payment target con las write-off lines
+        de retención embebidas, usando el mismo flujo que el wizard nativo
+        (`_generate_journal_entry(write_off_line_vals=...)`).
 
         Elige como target el payment de mayor importe (típicamente la pata
-        de efectivo/transferencia) para no contaminar moves de cheques que
-        tienen su propia estructura.
+        de efectivo/transferencia) para no tocar moves de cheques que
+        tienen su propia estructura. El usuario debe haber cargado en el
+        target un `amount` igual al neto (facturas − retenciones); el
+        método nativo `_prepare_move_lines_per_type` ajusta el counterpart
+        automáticamente para que el move quede balanceado.
         """
         self.ensure_one()
         if not self.withholding_ids:
@@ -405,11 +409,17 @@ class AccountPaymentGroup(models.Model):
         target = self.payment_ids.sorted(
             key=lambda p: p.amount, reverse=True
         )[0]
-        move = target.move_id
-        if not move or move.state != "draft":
+        if target.move_id:
             raise UserError(_(
-                "El asiento del medio de pago donde se imputan las "
-                "retenciones debe estar en borrador."
+                "El medio de pago donde se imputan las retenciones ya "
+                "tiene asiento generado. Eliminalo y volvelo a cargar "
+                "antes de confirmar el recibo/OP."
+            ))
+        if not target.outstanding_account_id:
+            raise UserError(_(
+                "El método de pago debe tener cuenta outstanding "
+                "configurada para poder aplicar retenciones (ver "
+                "account.payment.method.line.payment_account_id)."
             ))
 
         base_account = self.company_id.l10n_ar_tax_base_account_id
@@ -420,24 +430,12 @@ class AccountPaymentGroup(models.Model):
             ))
 
         sign = 1 if self.partner_type == "customer" else -1
-
-        counterpart = move.line_ids.filtered(
-            lambda l: l.account_id.account_type in (
-                "asset_receivable", "liability_payable"
-            )
-        )
-        if len(counterpart) != 1:
-            raise UserError(_(
-                "No se pudo identificar la línea contable del partner "
-                "en el medio de pago. Estructura del asiento inesperada."
-            ))
-
         self.withholding_ids._ensure_name()
 
-        new_lines = []
+        write_off_line_vals = []
         for w in self.withholding_ids:
             amount, account_id, repartition_id = w._tax_compute_all_helper()
-            new_lines.append({
+            write_off_line_vals.append({
                 "name": w.name,
                 "account_id": account_id,
                 "amount_currency": sign * amount,
@@ -445,8 +443,6 @@ class AccountPaymentGroup(models.Model):
                 "tax_base_amount": sign * w.base_amount,
                 "tax_repartition_line_id": repartition_id,
                 "currency_id": target.currency_id.id,
-                "partner_id": target.partner_id.id,
-                "move_id": move.id,
             })
 
         for base in set(self.withholding_ids.mapped("base_amount")):
@@ -455,35 +451,25 @@ class AccountPaymentGroup(models.Model):
             )
             label = ", ".join(wlines.mapped("name"))
             signed = sign * base
-            new_lines.append({
+            write_off_line_vals.append({
                 "name": label,
                 "tax_ids": [(6, 0, wlines.mapped("tax_id").ids)],
                 "account_id": base_account.id,
                 "balance": signed,
                 "amount_currency": signed,
                 "currency_id": target.currency_id.id,
-                "partner_id": target.partner_id.id,
-                "move_id": move.id,
             })
-            new_lines.append({
+            write_off_line_vals.append({
                 "name": label,
                 "account_id": base_account.id,
                 "balance": -signed,
                 "amount_currency": -signed,
                 "currency_id": target.currency_id.id,
-                "partner_id": target.partner_id.id,
-                "move_id": move.id,
             })
 
-        total_w = sum(self.withholding_ids.mapped("amount"))
-        counterpart.with_context(check_move_validity=False).write({
-            "balance": counterpart.balance + (-sign * total_w),
-            "amount_currency":
-                counterpart.amount_currency + (-sign * total_w),
-        })
-        self.env["account.move.line"].with_context(
-            check_move_validity=False
-        ).create(new_lines)
+        target._generate_journal_entry(
+            write_off_line_vals=write_off_line_vals
+        )
 
     def action_post(self):
         for group in self:
