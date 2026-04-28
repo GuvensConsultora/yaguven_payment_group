@@ -570,11 +570,22 @@ class AccountPaymentGroup(models.Model):
             if group.state == "cancel":
                 continue
             if group.state == "posted":
+                # Desconciliar las líneas matcheadas (payment ↔ factura)
+                # antes de cancelar los payments. remove_move_reconcile
+                # destruye los partial_reconcile y deja la factura como
+                # no pagada.
                 if group.matched_move_line_ids:
                     group.matched_move_line_ids.remove_move_reconcile()
-                posted = group.payment_ids.filtered(lambda p: p.state == "posted")
-                if posted:
-                    posted.action_cancel()
+                # Cancelar todos los payments que no estén ya cancelados.
+                # En Odoo 19 los estados son draft/in_process/paid/
+                # canceled/rejected (no más "posted"). action_cancel del
+                # native borra moves draft y cancela posteados via
+                # button_cancel.
+                to_cancel = group.payment_ids.filtered(
+                    lambda p: p.state not in ("canceled", "rejected")
+                )
+                if to_cancel:
+                    to_cancel.action_cancel()
             group.write({
                 "state": "cancel",
                 "matched_move_line_ids": [(5, 0, 0)],
@@ -585,7 +596,7 @@ class AccountPaymentGroup(models.Model):
         for group in self:
             if group.state != "cancel":
                 raise UserError(_("Solo se puede volver a borrador desde el estado cancelado."))
-            cancelled = group.payment_ids.filtered(lambda p: p.state == "cancel")
+            cancelled = group.payment_ids.filtered(lambda p: p.state == "canceled")
             if cancelled:
                 cancelled.action_draft()
             group.state = "draft"
