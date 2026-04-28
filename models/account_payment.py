@@ -1,4 +1,5 @@
-from odoo import fields, models
+from odoo import _, fields, models
+from odoo.exceptions import UserError
 
 
 class AccountPayment(models.Model):
@@ -36,3 +37,18 @@ class AccountPayment(models.Model):
     card_authorization_code = fields.Char(string="Cód. autorización")
     card_installments = fields.Integer(string="Cuotas", default=1)
     card_holder_name = fields.Char(string="Titular")
+
+    def action_open_move(self):
+        self.ensure_one()
+        if not self.move_id:
+            raise UserError(_(
+                "Este medio de pago todavía no tiene asiento contable. "
+                "Confirmá el recibo/OP para generarlo."
+            ))
+        return {
+            "type": "ir.actions.act_window",
+            "res_model": "account.move",
+            "res_id": self.move_id.id,
+            "view_mode": "form",
+            "target": "current",
+        }
