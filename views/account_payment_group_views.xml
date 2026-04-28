@@ -161,7 +161,9 @@
                                                         <field name="endorser_vat" string="CUIT endosante"
                                                                column_invisible="parent.payment_method_code == 'own_checks'"
                                                                optional="show"/>
+                                                        <field name="issue_date" string="Emisión" optional="show"/>
                                                         <field name="payment_date" string="Fecha de pago"/>
+                                                        <field name="at_sight" string="A la vista" optional="hide"/>
                                                         <field name="amount" sum="Total"/>
                                                         <field name="currency_id" column_invisible="1"/>
                                                     </list>
@@ -179,7 +181,9 @@
                                                         <field name="bank_id"/>
                                                         <field name="issuer_vat" string="CUIT emisor"/>
                                                         <field name="endorser_vat" string="CUIT endosante" optional="show"/>
-                                                        <field name="payment_date"/>
+                                                        <field name="issue_date" string="Emisión" optional="show"/>
+                                                        <field name="payment_date" string="Fecha de pago"/>
+                                                        <field name="at_sight" string="A la vista" optional="hide"/>
                                                         <field name="amount" sum="Total"/>
                                                         <field name="currency_id" column_invisible="1"/>
                                                     </list>
