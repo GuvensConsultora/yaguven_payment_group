@@ -524,20 +524,22 @@ class AccountPaymentGroup(models.Model):
             group._check_anticipo_balance()
             group._apply_withholdings_to_target_payment()
 
-            # _apply_withholdings → _generate_journal_entry crea el move
-            # del target payment en 'draft' y deja al payment en
-            # 'in_process'. Hay que postear ese move explícitamente para
-            # que las base lines sean visibles a futuras retenciones del
-            # mismo período (RG 830 acumulado mensual filtra por
-            # parent_state='posted').
+            # En Odoo 19 account.payment.action_post() ya no crea el
+            # move; lo difiere al matching con statement bancaria. Para
+            # que el recibo/OP impacte en contabilidad al confirmar,
+            # forzamos _generate_journal_entry en cada payment del
+            # grupo que no tenga move (los target con retención ya lo
+            # tienen porque _apply_withholdings_to_target_payment los
+            # generó arriba). Después posteamos todos los moves draft —
+            # las base lines de retención necesitan parent_state='posted'
+            # para que el acumulado RG 830 las vea.
+            for pay in group.payment_ids.filtered(lambda p: not p.move_id):
+                pay._generate_journal_entry()
+
             for pay in group.payment_ids.filtered(
                 lambda p: p.move_id and p.move_id.state == "draft"
             ):
                 pay.move_id.action_post()
-
-            draft_payments = group.payment_ids.filtered(lambda p: p.state == "draft")
-            if draft_payments:
-                draft_payments.action_post()
 
             counterpart = group._get_counterpart_lines()
             to_reconcile = counterpart | group.to_pay_move_line_ids
