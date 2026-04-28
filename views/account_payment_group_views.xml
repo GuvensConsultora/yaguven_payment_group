@@ -109,12 +109,22 @@
                                     <field name="currency_id" column_invisible="1"/>
                                     <field name="memo"/>
                                     <field name="state"/>
+                                    <field name="move_id" column_invisible="1"/>
+                                    <button name="action_open_move" type="object"
+                                            icon="fa-book" string="Asiento"
+                                            invisible="not move_id"/>
                                     <field name="partner_id" column_invisible="1"/>
                                     <field name="partner_type" column_invisible="1"/>
                                     <field name="payment_type" column_invisible="1"/>
                                     <field name="company_id" column_invisible="1"/>
                                 </list>
                                 <form string="Medio de pago">
+                                    <header>
+                                        <button name="action_open_move" type="object"
+                                                string="Ver asiento contable"
+                                                icon="fa-book"
+                                                invisible="not move_id"/>
+                                    </header>
                                     <sheet>
                                         <group>
                                             <group>
@@ -128,6 +138,7 @@
                                                 <field name="date"/>
                                             </group>
                                         </group>
+                                        <field name="move_id" invisible="1"/>
                                         <!-- invisibles necesarios para condiciones -->
                                         <field name="payment_method_code" invisible="1"/>
                                         <field name="is_card_journal" invisible="1"/>
