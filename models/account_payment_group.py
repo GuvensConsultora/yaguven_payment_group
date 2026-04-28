@@ -571,21 +571,40 @@ class AccountPaymentGroup(models.Model):
                 continue
             if group.state == "posted":
                 # Desconciliar las líneas matcheadas (payment ↔ factura)
-                # antes de cancelar los payments. remove_move_reconcile
-                # destruye los partial_reconcile y deja la factura como
-                # no pagada.
+                # para que la factura vuelva a quedar pendiente.
                 if group.matched_move_line_ids:
                     group.matched_move_line_ids.remove_move_reconcile()
-                # Cancelar todos los payments que no estén ya cancelados.
-                # En Odoo 19 los estados son draft/in_process/paid/
-                # canceled/rejected (no más "posted"). action_cancel del
-                # native borra moves draft y cancela posteados via
-                # button_cancel.
+
+                # PCGA / RT FACPCE: un asiento posteado no se elimina ni
+                # se pone en estado "cancelado" — se mantiene y se
+                # registra un asiento de reversión con D ↔ C invertidos,
+                # fecha actual, que lo neutraliza contablemente. Esto
+                # preserva la integridad cronológica y la auditoría.
+                #
+                # _reverse_moves(cancel=True) crea el reverso, lo postea
+                # y lo concilia con el original. El move original queda
+                # intacto en estado 'posted'.
                 to_cancel = group.payment_ids.filtered(
                     lambda p: p.state not in ("canceled", "rejected")
                 )
                 if to_cancel:
-                    to_cancel.action_cancel()
+                    posted_moves = to_cancel.move_id.filtered(
+                        lambda mv: mv.state == "posted"
+                    )
+                    draft_moves = to_cancel.move_id.filtered(
+                        lambda mv: mv.state == "draft"
+                    )
+                    draft_moves.unlink()
+                    if posted_moves:
+                        today = fields.Date.context_today(self)
+                        posted_moves._reverse_moves(
+                            default_values_list=[
+                                {"date": today, "ref": _("Reversión de %s") % mv.name}
+                                for mv in posted_moves
+                            ],
+                            cancel=True,
+                        )
+                    to_cancel.write({"state": "canceled"})
             group.write({
                 "state": "cancel",
                 "matched_move_line_ids": [(5, 0, 0)],
@@ -593,11 +612,14 @@ class AccountPaymentGroup(models.Model):
         return True
 
     def action_draft(self):
-        for group in self:
-            if group.state != "cancel":
-                raise UserError(_("Solo se puede volver a borrador desde el estado cancelado."))
-            cancelled = group.payment_ids.filtered(lambda p: p.state == "canceled")
-            if cancelled:
-                cancelled.action_draft()
-            group.state = "draft"
-        return True
+        # PCGA / RT FACPCE: una vez cancelado, el comprobante generó un
+        # asiento de reversión que mantiene la integridad cronológica.
+        # Volver a borrador implicaría borrar el reverso y desreversar
+        # el original, rompiendo el principio de inalterabilidad. Si
+        # hace falta reemitir el cobro/pago, crear un comprobante nuevo.
+        raise UserError(_(
+            "Un comprobante cancelado no vuelve a borrador. La cancelación "
+            "generó un asiento de reversión que mantiene la trazabilidad "
+            "contable (PCGA / RT FACPCE). Para reemitir el cobro/pago, "
+            "creá un comprobante nuevo."
+        ))
