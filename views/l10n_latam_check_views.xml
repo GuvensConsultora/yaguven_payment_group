@@ -14,6 +14,7 @@
                 <field name="is_echeq" optional="show"/>
                 <field name="bank_id" optional="show"/>
                 <field name="issuer_vat" string="CUIT emisor" optional="show"/>
+                <field name="issuer_postal_code" string="C.P. emisor" optional="hide"/>
                 <field name="endorser_vat" string="CUIT endosante" optional="show"/>
                 <field name="issue_date" string="Emisión" optional="show"/>
                 <field name="at_sight" string="A la vista" optional="hide"/>
