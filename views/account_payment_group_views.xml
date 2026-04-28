@@ -10,9 +10,8 @@
                     <button name="action_post" type="object" string="Confirmar"
                             class="oe_highlight" invisible="state != 'draft'"/>
                     <button name="action_cancel" type="object" string="Cancelar"
-                            invisible="state == 'cancel'"/>
-                    <button name="action_draft" type="object" string="Volver a borrador"
-                            invisible="state != 'cancel'"/>
+                            invisible="state == 'cancel'"
+                            confirm="Esto generará un asiento de reversión y desconciliará los comprobantes. ¿Continuar?"/>
                     <button name="action_print_recibo" type="object"
                             string="Imprimir" icon="fa-print" class="oe_highlight"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,posted"/>
