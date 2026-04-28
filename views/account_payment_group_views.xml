@@ -158,6 +158,9 @@
                                                         <field name="bank_id"/>
                                                         <field name="issuer_vat" string="CUIT emisor"
                                                                column_invisible="parent.payment_method_code == 'own_checks'"/>
+                                                        <field name="issuer_postal_code" string="C.P. emisor"
+                                                               column_invisible="parent.payment_method_code == 'own_checks'"
+                                                               optional="hide"/>
                                                         <field name="endorser_vat" string="CUIT endosante"
                                                                column_invisible="parent.payment_method_code == 'own_checks'"
                                                                optional="show"/>
@@ -180,6 +183,7 @@
                                                         <field name="is_echeq" optional="show"/>
                                                         <field name="bank_id"/>
                                                         <field name="issuer_vat" string="CUIT emisor"/>
+                                                        <field name="issuer_postal_code" string="C.P. emisor" optional="hide"/>
                                                         <field name="endorser_vat" string="CUIT endosante" optional="show"/>
                                                         <field name="issue_date" string="Emisión" optional="show"/>
                                                         <field name="payment_date" string="Fecha de pago"/>

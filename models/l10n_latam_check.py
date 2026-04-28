@@ -29,6 +29,12 @@ class L10nLatamCheck(models.Model):
              "sin fecha de pago futura. Skipea el control de plazo entre "
              "emisión y fecha de pago.",
     )
+    issuer_postal_code = fields.Char(
+        string="C.P. emisor",
+        help="Código postal del emisor del cheque. Útil para "
+             "trazabilidad geográfica de la cartera de cheques de "
+             "tercero (riesgo por plaza).",
+    )
 
     _LEGAL_DAYS_COMMON = 30
     _LEGAL_DAYS_ECHEQ = 360
