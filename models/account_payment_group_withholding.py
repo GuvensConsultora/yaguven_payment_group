@@ -38,11 +38,13 @@ class AccountPaymentGroupWithholding(models.Model):
         related="tax_id.l10n_ar_withholding_sequence_id"
     )
     base_amount = fields.Monetary(
+        string="Monto base",
         compute="_compute_base_amount",
         store=True,
         readonly=False,
     )
     amount = fields.Monetary(
+        string="Monto retenido",
         compute="_compute_amount",
         store=True,
         readonly=False,
