@@ -11,6 +11,14 @@ class L10nLatamCheck(models.Model):
              "máximo entre emisión y pago a 360 días (vs 30 del cheque "
              "común).",
     )
+    is_cpd = fields.Boolean(
+        string="Pago diferido (CPD)",
+        help="Tildar si es Cheque de Pago Diferido en papel (art. 54 "
+             "Ley 24.452). Igual que el Echeq, admite hasta 360 días "
+             "entre emisión y pago, contra los 30 del cheque común "
+             "(art. 23). NO mezclar con 'A la vista' — el CPD tiene "
+             "fecha de pago futura cierta.",
+    )
     endorser_vat = fields.Char(
         string="CUIT endosante",
         help="CUIT del último endosante del cheque. Para cheques de "
@@ -39,7 +47,7 @@ class L10nLatamCheck(models.Model):
     _LEGAL_DAYS_COMMON = 30
     _LEGAL_DAYS_ECHEQ = 360
 
-    @api.constrains("issue_date", "payment_date", "at_sight", "is_echeq")
+    @api.constrains("issue_date", "payment_date", "at_sight", "is_echeq", "is_cpd")
     def _check_payment_period(self):
         for chk in self:
             if chk.at_sight or not chk.issue_date or not chk.payment_date:
@@ -51,15 +59,22 @@ class L10nLatamCheck(models.Model):
                     name=chk.name or "—",
                     pay=chk.payment_date, iss=chk.issue_date,
                 ))
-            limit = self._LEGAL_DAYS_ECHEQ if chk.is_echeq else self._LEGAL_DAYS_COMMON
+            extended = chk.is_echeq or chk.is_cpd
+            limit = self._LEGAL_DAYS_ECHEQ if extended else self._LEGAL_DAYS_COMMON
             delta = (chk.payment_date - chk.issue_date).days
             if delta > limit:
-                tipo = "Echeq" if chk.is_echeq else "cheque común"
+                if chk.is_echeq:
+                    tipo = "Echeq"
+                elif chk.is_cpd:
+                    tipo = "cheque de pago diferido"
+                else:
+                    tipo = "cheque común"
                 raise ValidationError(_(
                     "Cheque %(name)s: %(delta)s días entre emisión y pago. "
                     "El %(tipo)s admite hasta %(limit)s días (Ley 24.452 / "
-                    "Comunicación BCRA). Marcalo como 'A la vista' si querés "
-                    "saltear este control.",
+                    "Comunicación BCRA). Si es Cheque de Pago Diferido (CPD) "
+                    "marcalo como 'Pago diferido'; si es Echeq, como 'Echeq'; "
+                    "si es a la vista, como 'A la vista'.",
                     name=chk.name or "—", delta=delta, tipo=tipo, limit=limit,
                 ))
 
