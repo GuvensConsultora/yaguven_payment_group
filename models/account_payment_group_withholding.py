@@ -23,6 +23,31 @@ class AccountPaymentGroupWithholding(models.Model):
          "Editá la línea existente en lugar de cargarla otra vez."),
     ]
 
+    @api.onchange("tax_id")
+    def _onchange_tax_id_check_duplicate(self):
+        """Al elegir el impuesto en una línea nueva, si ya existe otra
+        línea con el mismo tax en el mismo group, avisar al usuario y
+        limpiar el campo. Más amigable que esperar al guardar."""
+        for line in self:
+            if not line.tax_id or not line.payment_group_id:
+                continue
+            duplicates = line.payment_group_id.withholding_ids.filtered(
+                lambda w: w.tax_id == line.tax_id and w != line
+            )
+            if duplicates:
+                tax_name = line.tax_id.name
+                line.tax_id = False
+                return {
+                    "warning": {
+                        "title": _("Retención duplicada"),
+                        "message": _(
+                            "Ya hay una retención del impuesto '%s' en este "
+                            "recibo / OP. Editá la línea existente en lugar "
+                            "de cargar otra."
+                        ) % tax_name,
+                    }
+                }
+
     payment_group_id = fields.Many2one(
         "account.payment.group",
         required=True,
