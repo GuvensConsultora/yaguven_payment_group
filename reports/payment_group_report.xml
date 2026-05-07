@@ -182,12 +182,48 @@
                                       t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
                             </td>
                         </tr>
+                        <!-- Retenciones como filas adicionales: el partner las
+                             "recibe" como menor cash (las depositamos al fisco). -->
+                        <tr t-foreach="o.withholding_ids" t-as="w">
+                            <td>
+                                <em>Retención</em>
+                            </td>
+                            <td><span t-field="w.tax_id.name"/></td>
+                            <td>
+                                <t t-if="w.name">Cert. <span t-field="w.name"/></t>
+                                <t t-if="w.base_amount">
+                                    <small class="text-muted">
+                                        · base
+                                        <span t-field="w.base_amount"
+                                              t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
+                                    </small>
+                                </t>
+                            </td>
+                            <td class="text-end">
+                                <span t-field="w.amount"
+                                      t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
+                            </td>
+                        </tr>
                     </tbody>
                     <tfoot>
-                        <tr>
-                            <th colspan="3" class="text-end">Total medios de pago</th>
-                            <th class="text-end">
+                        <tr t-if="o.withholdings_amount">
+                            <th colspan="3" class="text-end text-muted">Subtotal medios de pago</th>
+                            <th class="text-end text-muted">
                                 <span t-field="o.payments_amount"
+                                      t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
+                            </th>
+                        </tr>
+                        <tr t-if="o.withholdings_amount">
+                            <th colspan="3" class="text-end text-muted">Subtotal retenciones</th>
+                            <th class="text-end text-muted">
+                                <span t-field="o.withholdings_amount"
+                                      t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
+                            </th>
+                        </tr>
+                        <tr>
+                            <th colspan="3" class="text-end">Total entregado al partner</th>
+                            <th class="text-end">
+                                <span t-esc="o.payments_amount + o.withholdings_amount"
                                       t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
                             </th>
                         </tr>
