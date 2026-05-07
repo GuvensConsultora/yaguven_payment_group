@@ -2,15 +2,17 @@
 <odoo>
 
     <record id="action_report_payment_group" model="ir.actions.report">
-        <field name="name">Recibo / Orden de pago</field>
+        <field name="name">Recibo / Orden de pago + Certificados</field>
         <field name="model">account.payment.group</field>
         <field name="report_type">qweb-pdf</field>
         <field name="report_name">yaguven_payment_group.report_payment_group</field>
         <field name="report_file">yaguven_payment_group.report_payment_group</field>
         <field name="binding_model_id" ref="model_account_payment_group"/>
         <field name="binding_type">report</field>
+        <!-- Título del PDF generado: "Recibo XXX" para cobros (inbound),
+             "Orden de pago XXX" para pagos a proveedores (outbound) -->
         <field name="print_report_name">
-            (object.payment_type == 'inbound' and 'Recibo ' or 'Orden de pago ') + (object.name or '')
+            ('Recibo ' if object.payment_type == 'inbound' else 'Orden de pago ') + (object.name or '')
         </field>
     </record>
 
@@ -173,7 +175,13 @@
     <template id="report_payment_group">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="o">
+                <!-- Página 1: el recibo / OP -->
                 <t t-call="yaguven_payment_group.report_payment_group_document"/>
+                <!-- Páginas siguientes: 1 certificado por cada retención -->
+                <t t-foreach="o.withholding_ids" t-as="wh">
+                    <t t-set="o" t-value="wh"/>
+                    <t t-call="yaguven_payment_group.report_withholding_certificate_document"/>
+                </t>
             </t>
         </t>
     </template>
