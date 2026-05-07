@@ -1,5 +1,5 @@
 from odoo import _, api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 
 
 class AccountPaymentGroup(models.Model):
@@ -139,6 +139,37 @@ class AccountPaymentGroup(models.Model):
              "cubrir todos los comprobantes, este monto refleja el saldo "
              "que el tercero sigue debiendo por esas facturas.",
     )
+
+    @api.onchange("partner_type")
+    def _onchange_partner_type_sync_payment_type(self):
+        """Mantiene coherencia: Cliente → Cobro / Proveedor → Pago.
+        Si el usuario cambia el tipo de tercero, el tipo de movimiento
+        se ajusta automáticamente."""
+        for group in self:
+            if group.partner_type == "supplier":
+                group.payment_type = "outbound"
+            elif group.partner_type == "customer":
+                group.payment_type = "inbound"
+
+    @api.constrains("partner_type", "payment_type")
+    def _check_partner_payment_type_coherence(self):
+        """Bloquea guardar combinaciones incoherentes: un proveedor solo
+        puede tener una OP de Pago, un cliente solo un Recibo de Cobro.
+        Cubre creates por XML-RPC, importaciones y duplicates donde el
+        onchange de UI no se dispara."""
+        for group in self:
+            if (group.partner_type == "supplier"
+                    and group.payment_type != "outbound"):
+                raise ValidationError(_(
+                    "Una OP a proveedor debe ser de tipo 'Pago' "
+                    "(outbound). Recibido: %s."
+                ) % group.payment_type)
+            if (group.partner_type == "customer"
+                    and group.payment_type != "inbound"):
+                raise ValidationError(_(
+                    "Un Recibo de cliente debe ser de tipo 'Cobro' "
+                    "(inbound). Recibido: %s."
+                ) % group.payment_type)
 
     @api.onchange("partner_id", "partner_type", "company_id")
     def _onchange_partner_autofill_to_pay(self):
