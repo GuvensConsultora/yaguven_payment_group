@@ -16,6 +16,13 @@ class AccountPaymentGroupWithholding(models.Model):
     _description = "Retención AR aplicada a un recibo / orden de pago"
     _check_company_auto = True
 
+    _sql_constraints = [
+        ("uniq_group_tax",
+         "unique(payment_group_id, tax_id)",
+         "Ya existe una retención de este impuesto en el recibo / OP. "
+         "Editá la línea existente en lugar de cargarla otra vez."),
+    ]
+
     payment_group_id = fields.Many2one(
         "account.payment.group",
         required=True,
