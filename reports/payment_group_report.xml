@@ -120,7 +120,63 @@
                         <tr t-foreach="o.payment_ids.sorted(key=lambda p: (p.journal_id.name or '', p.payment_method_line_id.name or '', p.id))" t-as="p">
                             <td><span t-field="p.journal_id.name"/></td>
                             <td><span t-field="p.payment_method_line_id.name"/></td>
-                            <td><span t-field="p.memo"/></td>
+                            <td>
+                                <!-- Cheques propios o de tercero recibidos (nuevos) -->
+                                <t t-if="p.l10n_latam_new_check_ids">
+                                    <strong>Cheques:</strong>
+                                    <ul class="mb-1 ps-3">
+                                        <li t-foreach="p.l10n_latam_new_check_ids" t-as="ch">
+                                            Nº <span t-field="ch.name"/>
+                                            <t t-if="ch.bank_id"> · <span t-field="ch.bank_id.name"/></t>
+                                            <t t-if="ch.is_echeq"> · echeq</t>
+                                            <t t-if="ch.is_cpd"> · CPD</t>
+                                            <t t-if="ch.payment_date"> · vto <span t-field="ch.payment_date"/></t>
+                                            <t t-if="ch.issuer_vat"> · CUIT emisor <span t-field="ch.issuer_vat"/></t>
+                                            ·
+                                            <span t-field="ch.amount"
+                                                  t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
+                                        </li>
+                                    </ul>
+                                </t>
+                                <!-- Cheques de cartera entregados / endosados -->
+                                <t t-if="p.l10n_latam_move_check_ids">
+                                    <strong>Cheques de cartera:</strong>
+                                    <ul class="mb-1 ps-3">
+                                        <li t-foreach="p.l10n_latam_move_check_ids" t-as="ch">
+                                            Nº <span t-field="ch.name"/>
+                                            <t t-if="ch.bank_id"> · <span t-field="ch.bank_id.name"/></t>
+                                            <t t-if="ch.payment_date"> · vto <span t-field="ch.payment_date"/></t>
+                                            ·
+                                            <span t-field="ch.amount"
+                                                  t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
+                                        </li>
+                                    </ul>
+                                </t>
+                                <!-- Tarjeta de débito / crédito -->
+                                <t t-if="p.is_card_journal">
+                                    <strong>Tarjeta:</strong>
+                                    <span t-field="p.card_brand"/>
+                                    <t t-if="p.card_last_digits"> ****<span t-field="p.card_last_digits"/></t>
+                                    <t t-if="p.card_installments"> · <span t-field="p.card_installments"/> cuota(s)</t>
+                                    <t t-if="p.card_voucher_number"> · voucher <span t-field="p.card_voucher_number"/></t>
+                                    <t t-if="p.card_authorization_code"> · aut. <span t-field="p.card_authorization_code"/></t>
+                                    <t t-if="p.card_holder_name"> · titular <span t-field="p.card_holder_name"/></t>
+                                </t>
+                                <!-- Transferencia bancaria: bank journal sin cheques ni tarjeta -->
+                                <t t-if="p.journal_id.type == 'bank' and not p.l10n_latam_new_check_ids and not p.l10n_latam_move_check_ids and not p.is_card_journal">
+                                    <strong>Transferencia bancaria</strong>
+                                    <t t-if="p.journal_id.bank_id"> · <span t-field="p.journal_id.bank_id.name"/></t>
+                                    <t t-if="p.journal_id.bank_account_id.acc_number"> · cuenta <span t-field="p.journal_id.bank_account_id.acc_number"/></t>
+                                </t>
+                                <!-- Efectivo: cash journal sin cheques -->
+                                <t t-if="p.journal_id.type == 'cash'">
+                                    <strong>Efectivo</strong>
+                                </t>
+                                <!-- Memo / concepto adicional -->
+                                <div t-if="p.memo" class="text-muted">
+                                    <small><span t-field="p.memo"/></small>
+                                </div>
+                            </td>
                             <td class="text-end">
                                 <span t-field="p.amount"
                                       t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
