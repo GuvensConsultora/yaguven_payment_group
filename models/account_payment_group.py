@@ -177,26 +177,55 @@ class AccountPaymentGroup(models.Model):
             if group.state != "draft" or not group.partner_id:
                 group.to_pay_move_line_ids = [(5, 0, 0)]
                 continue
-            account_type = (
-                "asset_receivable"
-                if group.partner_type == "customer"
-                else "liability_payable"
-            )
-            move_types = (
-                ("out_invoice", "out_refund")
-                if group.partner_type == "customer"
-                else ("in_invoice", "in_refund")
-            )
-            lines = self.env["account.move.line"].search([
-                ("partner_id", "=", group.partner_id.id),
-                ("company_id", "=", group.company_id.id),
-                ("account_id.account_type", "=", account_type),
-                ("parent_state", "=", "posted"),
-                ("reconciled", "=", False),
-                ("amount_residual", "!=", 0),
-                ("move_id.move_type", "in", move_types),
-            ])
+            lines = group._get_pending_move_lines()
             group.to_pay_move_line_ids = [(6, 0, lines.ids)]
+
+    def _get_pending_move_lines(self):
+        """Devuelve las líneas pendientes (residual != 0) del partner que
+        corresponden a su tipo (receivable cliente / payable proveedor)."""
+        self.ensure_one()
+        if not self.partner_id:
+            return self.env["account.move.line"]
+        account_type = (
+            "asset_receivable"
+            if self.partner_type == "customer"
+            else "liability_payable"
+        )
+        move_types = (
+            ("out_invoice", "out_refund")
+            if self.partner_type == "customer"
+            else ("in_invoice", "in_refund")
+        )
+        return self.env["account.move.line"].search([
+            ("partner_id", "=", self.partner_id.id),
+            ("company_id", "=", self.company_id.id),
+            ("account_id.account_type", "=", account_type),
+            ("parent_state", "=", "posted"),
+            ("reconciled", "=", False),
+            ("amount_residual", "!=", 0),
+            ("move_id.move_type", "in", move_types),
+        ])
+
+    def action_load_all_pending(self):
+        """Botón: imputa todos los comprobantes pendientes del partner."""
+        for group in self:
+            if group.state != "draft":
+                raise UserError(_(
+                    "Solo se pueden cargar comprobantes en estado borrador."
+                ))
+            lines = group._get_pending_move_lines()
+            group.to_pay_move_line_ids = [(6, 0, lines.ids)]
+        return True
+
+    def action_clear_to_pay(self):
+        """Botón: vacía la lista de comprobantes a cancelar."""
+        for group in self:
+            if group.state != "draft":
+                raise UserError(_(
+                    "Solo se puede limpiar la lista en estado borrador."
+                ))
+            group.to_pay_move_line_ids = [(5, 0, 0)]
+        return True
 
     @api.depends("payment_ids.amount", "payment_ids.state")
     def _compute_payments_amount(self):

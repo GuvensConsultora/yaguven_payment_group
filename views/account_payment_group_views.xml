@@ -73,28 +73,38 @@
                                    readonly="state != 'draft' or invoices_to_cancel_amount != 0"/>
                         </group>
                     </group>
-                    <notebook>
-                        <!-- Paso 2: elegir qué facturas cancelar -->
-                        <page string="Comprobantes a cancelar" name="to_pay">
-                            <field name="to_pay_move_line_ids" readonly="state != 'draft'">
+                    <!-- Layout dos columnas: izquierda comprobantes, derecha pagos + retenciones -->
+                    <div class="row mt16">
+                        <div class="col-md-6 pe-md-3">
+                            <h3 class="mb-2">Comprobantes a cancelar</h3>
+                            <div class="d-flex gap-2 mb-2">
+                                <button name="action_load_all_pending"
+                                        type="object" string="Cargar todos pendientes"
+                                        class="btn btn-secondary btn-sm"
+                                        invisible="state != 'draft' or not partner_id"/>
+                                <button name="action_clear_to_pay"
+                                        type="object" string="Limpiar"
+                                        class="btn btn-secondary btn-sm"
+                                        invisible="state != 'draft' or not to_pay_move_line_ids"/>
+                            </div>
+                            <field name="to_pay_move_line_ids" nolabel="1"
+                                   readonly="state != 'draft'">
                                 <list>
-                                    <field name="date"/>
-                                    <field name="move_id"/>
-                                    <field name="name"/>
-                                    <field name="account_id"/>
-                                    <field name="debit"/>
-                                    <field name="credit"/>
-                                    <field name="amount_residual" sum="Residual"/>
-                                    <field name="amount_residual_currency" optional="hide"/>
-                                    <field name="currency_id" optional="hide"/>
+                                    <field name="date" string="Fecha"/>
+                                    <field name="move_id" string="Comprobante"/>
+                                    <field name="amount_residual" string="Residual"
+                                           sum="Total"/>
+                                    <field name="currency_id" column_invisible="1"/>
                                     <field name="partner_id" column_invisible="1"/>
                                     <field name="company_id" column_invisible="1"/>
                                 </list>
                             </field>
-                        </page>
-                        <!-- Paso 3: cargar medios de pago -->
-                        <page string="Medios de pago" name="payments">
-                            <field name="payment_ids" readonly="state != 'draft'"
+                        </div>
+                        <div class="col-md-6 ps-md-3">
+                            <h3 class="mb-2">Medios de pago</h3>
+                            <!-- Paso 3: cargar medios de pago -->
+                            <field name="payment_ids" nolabel="1"
+                                   readonly="state != 'draft'"
                                    context="{'default_partner_id': partner_id,
                                              'default_partner_type': partner_type,
                                              'default_payment_type': payment_type,
@@ -214,14 +224,14 @@
                                     </sheet>
                                 </form>
                             </field>
-                        </page>
-                        <!-- Paso 4 (opcional): retenciones AR -->
-                        <page string="Retenciones" name="withholdings">
-                            <field name="withholding_ids" readonly="state != 'draft'">
+                            <hr class="my-3"/>
+                            <h5 class="mb-2 text-muted">Retenciones</h5>
+                            <field name="withholding_ids" nolabel="1"
+                                   readonly="state != 'draft'">
                                 <list editable="bottom">
-                                    <field name="tax_id"/>
-                                    <field name="name" string="Nro retención"/>
-                                    <field name="base_amount"/>
+                                    <field name="tax_id" string="Impuesto"/>
+                                    <field name="name" string="Nº retención"/>
+                                    <field name="base_amount" string="Base"/>
                                     <field name="amount" sum="Total"/>
                                     <button name="action_print_certificate"
                                             type="object"
@@ -233,20 +243,21 @@
                                     <field name="partner_type" column_invisible="1"/>
                                 </list>
                             </field>
-                        </page>
-                        <page string="Líneas conciliadas" name="matched"
-                              invisible="state != 'posted'">
-                            <field name="matched_move_line_ids" readonly="1">
-                                <list>
-                                    <field name="date"/>
-                                    <field name="move_id"/>
-                                    <field name="account_id"/>
-                                    <field name="debit"/>
-                                    <field name="credit"/>
-                                </list>
-                            </field>
-                        </page>
-                    </notebook>
+                        </div>
+                    </div>
+                    <group string="Líneas conciliadas"
+                           invisible="state != 'posted'">
+                        <field name="matched_move_line_ids" readonly="1"
+                               nolabel="1" colspan="2">
+                            <list>
+                                <field name="date"/>
+                                <field name="move_id"/>
+                                <field name="account_id"/>
+                                <field name="debit"/>
+                                <field name="credit"/>
+                            </list>
+                        </field>
+                    </group>
                 </sheet>
                 <chatter/>
             </form>
