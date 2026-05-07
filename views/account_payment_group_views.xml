@@ -55,53 +55,77 @@
                             <field name="currency_id" invisible="1"/>
                         </group>
                     </group>
-                    <!-- Monitor en vivo: facturas − medios de pago = neto.
-                         Anticipo aparte (input del usuario). -->
-                    <group name="totals_header">
-                        <group>
-                            <field name="invoices_to_cancel_amount"/>
-                            <field name="payments_amount"
-                                   string="− Medios de pago"/>
-                            <field name="withholdings_amount"
-                                   string="− Retenciones"
-                                   invisible="not withholdings_amount"/>
-                            <field name="net_to_cancel_amount"
-                                   string="= Neto a cancelar"/>
+                    <!-- Monitor en vivo: facturas − medios de pago − retenciones = neto. -->
+                    <div style="background-color: #FAF3E7; border-radius: 8px; padding: 12px; margin-top: 8px;">
+                        <p class="text-muted small mb-2">
+                            🔍 <strong>Resumen en vivo</strong> — se actualiza solo a medida que tildás comprobantes y cargás medios de pago.
+                        </p>
+                        <group name="totals_header">
+                            <group>
+                                <field name="invoices_to_cancel_amount"
+                                       help="Suma de los importes residuales de los comprobantes tildados a la izquierda. Es el bruto a cancelar."/>
+                                <field name="payments_amount"
+                                       string="− Medios de pago"
+                                       help="Cash que sale del banco / caja / cheques / tarjetas. Lo que efectivamente entregás al partner."/>
+                                <field name="withholdings_amount"
+                                       string="− Retenciones"
+                                       help="Impuestos retenidos al partner que NO salen del banco — los depositás vos al fisco."
+                                       invisible="not withholdings_amount"/>
+                                <field name="net_to_cancel_amount"
+                                       string="= Neto a cancelar"
+                                       help="Diferencia. Cuando llega a 0, el comprobante cuadra y podés confirmar."/>
+                            </group>
+                            <group>
+                                <field name="advance_amount"
+                                       help="Si querés entregar más cash que el bruto de las facturas, eso es anticipo. No genera retención."
+                                       readonly="state != 'draft' or invoices_to_cancel_amount != 0"/>
+                            </group>
                         </group>
-                        <group>
-                            <field name="advance_amount"
-                                   readonly="state != 'draft' or invoices_to_cancel_amount != 0"/>
-                        </group>
-                    </group>
+                    </div>
                     <!-- Layout dos columnas: izquierda comprobantes, derecha pagos + retenciones -->
                     <div class="row mt16">
                         <div class="col-md-6 pe-md-3">
-                            <h3 class="mb-2">Comprobantes a cancelar</h3>
-                            <div class="d-flex gap-2 mb-2">
-                                <button name="action_load_all_pending"
-                                        type="object" string="Cargar todos pendientes"
-                                        class="btn btn-secondary btn-sm"
-                                        invisible="state != 'draft' or not partner_id"/>
-                                <button name="action_clear_to_pay"
-                                        type="object" string="Limpiar"
-                                        class="btn btn-secondary btn-sm"
-                                        invisible="state != 'draft' or not to_pay_move_line_ids"/>
+                            <div style="background-color: #FFF8E1; border-radius: 8px; padding: 12px;">
+                                <h3 class="mb-2" title="Tildá las facturas que querés cancelar. Las retenciones se calculan automáticamente sobre el neto sin impuestos al pie.">
+                                    📄 Comprobantes a cancelar
+                                </h3>
+                                <p class="text-muted small mb-2">
+                                    Tildá las facturas a cancelar. Usá los botones abajo para cargar todas las pendientes del partner o limpiar la lista.
+                                </p>
+                                <div class="d-flex gap-2 mb-2">
+                                    <button name="action_load_all_pending"
+                                            type="object" string="📥 Cargar todos pendientes"
+                                            class="btn btn-secondary btn-sm"
+                                            help="Imputa todos los comprobantes posteados con saldo pendiente del partner."
+                                            invisible="state != 'draft' or not partner_id"/>
+                                    <button name="action_clear_to_pay"
+                                            type="object" string="🧹 Limpiar"
+                                            class="btn btn-secondary btn-sm"
+                                            help="Vacía la lista de comprobantes a cancelar."
+                                            invisible="state != 'draft' or not to_pay_move_line_ids"/>
+                                </div>
+                                <field name="to_pay_move_line_ids" nolabel="1"
+                                       readonly="state != 'draft'">
+                                    <list>
+                                        <field name="date" string="Fecha"/>
+                                        <field name="move_id" string="Comprobante"/>
+                                        <field name="amount_residual" string="Residual"
+                                               sum="Total"/>
+                                        <field name="currency_id" column_invisible="1"/>
+                                        <field name="partner_id" column_invisible="1"/>
+                                        <field name="company_id" column_invisible="1"/>
+                                    </list>
+                                </field>
                             </div>
-                            <field name="to_pay_move_line_ids" nolabel="1"
-                                   readonly="state != 'draft'">
-                                <list>
-                                    <field name="date" string="Fecha"/>
-                                    <field name="move_id" string="Comprobante"/>
-                                    <field name="amount_residual" string="Residual"
-                                           sum="Total"/>
-                                    <field name="currency_id" column_invisible="1"/>
-                                    <field name="partner_id" column_invisible="1"/>
-                                    <field name="company_id" column_invisible="1"/>
-                                </list>
-                            </field>
                         </div>
                         <div class="col-md-6 ps-md-3">
-                            <h3 class="mb-2">Medios de pago</h3>
+                            <div style="background-color: #FFF3E0; border-radius: 8px; padding: 12px;">
+                                <h3 class="mb-2" title="Cargá efectivo, transferencias, cheques, tarjetas. El primer monto viene precargado con el cash neto a entregar al partner.">
+                                    💳 Medios de pago
+                                </h3>
+                                <p class="text-muted small mb-2">
+                                    Sumá los pagos hasta cubrir el cash neto. Cada nueva línea viene precargada con lo que falta.
+                                </p>
                             <!-- Paso 3: cargar medios de pago -->
                             <field name="payment_ids" nolabel="1"
                                    readonly="state != 'draft'"
@@ -225,25 +249,32 @@
                                     </sheet>
                                 </form>
                             </field>
-                            <hr class="my-3"/>
-                            <h5 class="mb-2 text-muted">Retenciones</h5>
-                            <field name="withholding_ids" nolabel="1"
-                                   readonly="state != 'draft'">
-                                <list editable="bottom">
-                                    <field name="tax_id" string="Impuesto"/>
-                                    <field name="name" string="Nº retención"/>
-                                    <field name="base_amount" string="Base"/>
-                                    <field name="amount" sum="Total"/>
-                                    <button name="action_print_certificate"
-                                            type="object"
-                                            string="Certificado"
-                                            icon="fa-file-pdf-o"
-                                            invisible="parent.state != 'posted'"/>
-                                    <field name="currency_id" column_invisible="1"/>
-                                    <field name="company_id" column_invisible="1"/>
-                                    <field name="partner_type" column_invisible="1"/>
-                                </list>
-                            </field>
+                                <div style="background-color: #FCE4EC; border-radius: 8px; padding: 12px; margin-top: 12px;">
+                                    <h5 class="mb-2" title="Retenciones IIBB / Ganancias practicadas a este proveedor. Se autocalculan al imputar los comprobantes según las condiciones SIRCAR cargadas para el partner.">
+                                        🧾 Retenciones
+                                    </h5>
+                                    <p class="text-muted small mb-2">
+                                        Se calculan automáticamente al tildar comprobantes. Si el partner no tiene condiciones SIRCAR cargadas, la lista queda vacía.
+                                    </p>
+                                    <field name="withholding_ids" nolabel="1"
+                                           readonly="state != 'draft'">
+                                        <list editable="bottom">
+                                            <field name="tax_id" string="Impuesto"/>
+                                            <field name="name" string="Nº retención"/>
+                                            <field name="base_amount" string="Base"/>
+                                            <field name="amount" sum="Total"/>
+                                            <button name="action_print_certificate"
+                                                    type="object"
+                                                    string="Certificado"
+                                                    icon="fa-file-pdf-o"
+                                                    invisible="parent.state != 'posted'"/>
+                                            <field name="currency_id" column_invisible="1"/>
+                                            <field name="company_id" column_invisible="1"/>
+                                            <field name="partner_type" column_invisible="1"/>
+                                        </list>
+                                    </field>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <group string="Líneas conciliadas"
