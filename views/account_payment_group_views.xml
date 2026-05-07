@@ -109,7 +109,8 @@
                                              'default_partner_type': partner_type,
                                              'default_payment_type': payment_type,
                                              'default_company_id': company_id,
-                                             'default_date': payment_date}">
+                                             'default_date': payment_date,
+                                             'default_amount': net_to_cancel_amount}">
                                 <list>
                                     <field name="journal_id"
                                            domain="[('type', 'in', ['cash', 'bank'])]"/>
