@@ -6,9 +6,11 @@ pero persistida y atada al group, no al wizard transient.
 from datetime import date
 
 from dateutil.relativedelta import relativedelta
+from markupsafe import Markup
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
+from odoo.tools.misc import html_escape
 
 
 class AccountPaymentGroupWithholding(models.Model):
@@ -71,73 +73,54 @@ class AccountPaymentGroupWithholding(models.Model):
     )
     base_amount = fields.Monetary(
         string="Monto base",
-        compute="_compute_base_amount",
-        store=True,
-        readonly=False,
+        help="Base imponible cargada por el cajero. En retenciones de "
+             "clientes (que nos aplican a nosotros) refleja la base "
+             "informada en el certificado recibido; en retenciones a "
+             "proveedores refleja la base que el cajero entiende como "
+             "correcta. El sistema no la recalcula: al confirmar el "
+             "recibo/OP verifica contra el cálculo paramétrico y publica "
+             "el resultado en el chatter.",
     )
     amount = fields.Monetary(
         string="Monto retenido",
-        compute="_compute_amount",
-        store=True,
-        readonly=False,
+        help="Monto retenido cargado por el cajero. No se recalcula: para "
+             "cobros es lo que el cliente ya retuvo, para pagos es lo que "
+             "el cajero decide retener. El sistema compara contra el "
+             "cálculo según RG 830 / régimen y deja constancia en el "
+             "chatter al confirmar.",
     )
 
-    @api.depends(
-        "payment_group_id.invoices_to_cancel_amount",
-        "payment_group_id.advance_amount",
-        "tax_id",
-    )
-    def _compute_base_amount(self):
-        """Base imponible RG 830 art. 25 — neto sin IVA.
+    def _compute_expected_base_amount(self):
+        """Base imponible esperada según parametrización (RG 830 art. 25 —
+        neto sin IVA). Sólo se usa para la verificación en chatter; el
+        valor real es el que carga el cajero en `base_amount`.
 
-        Con facturas tildadas: base = invoices_to_cancel × untaxed/total
-        (proporción de neto sin IVA del conjunto de comprobantes).
-
-        Sin facturas (anticipo): base = advance_amount (lo que el usuario
-        declara como obligación bruta a cancelar). Fallback a
-        payments_amount si advance todavía no fue cargado — vale para
-        anticipos sin retención porque advance auto = payments en ese caso.
-
-        Por qué advance y no payments: en el caso anticipo CON retención,
-        payments_amount es el neto efectivamente abonado al partner
-        (después de descontar retenciones), no la base imponible.
-        Calcular sobre payments subestima la retención (era el bug
-        análogo de Lupatini). El bruto es advance_amount, que el usuario
-        carga manualmente.
+        Con facturas tildadas: base = invoices_to_cancel × untaxed/total.
+        Sin facturas (anticipo): base = advance_amount; fallback a
+        payments_amount si advance todavía no fue cargado.
         """
-        for w in self:
-            group = w.payment_group_id
-            if not group:
-                w.base_amount = 0.0
-                continue
-            if w.tax_id.l10n_ar_tax_type == "iibb_total":
-                target = group.invoices_to_cancel_amount + group.advance_amount
-                w.base_amount = target or group.payments_amount
-                continue
-            inv_lines = group.to_pay_move_line_ids.filtered(
-                lambda l: l.move_id.move_type in (
-                    "out_invoice", "in_invoice", "out_refund", "in_refund"
-                )
+        self.ensure_one()
+        group = self.payment_group_id
+        if not group:
+            return 0.0
+        if self.tax_id.l10n_ar_tax_type == "iibb_total":
+            target = group.invoices_to_cancel_amount + group.advance_amount
+            return target or group.payments_amount
+        inv_lines = group.to_pay_move_line_ids.filtered(
+            lambda l: l.move_id.move_type in (
+                "out_invoice", "in_invoice", "out_refund", "in_refund"
             )
-            untaxed = sum(inv_lines.mapped("move_id.amount_untaxed"))
-            total = sum(inv_lines.mapped("move_id.amount_total"))
-            invoice_base = (
-                group.invoices_to_cancel_amount * untaxed / total
-                if total else 0.0
-            )
-            advance_base = group.advance_amount  # bruto sin IVA discriminado
-            if invoice_base or advance_base:
-                w.base_amount = invoice_base + advance_base
-            else:
-                w.base_amount = group.payments_amount
-
-    @api.depends("base_amount", "tax_id")
-    def _compute_amount(self):
-        for w in self:
-            if not w.tax_id:
-                w.amount = 0.0
-            else:
-                w.amount = w._tax_compute_all_helper()[0]
+        )
+        untaxed = sum(inv_lines.mapped("move_id.amount_untaxed"))
+        total = sum(inv_lines.mapped("move_id.amount_total"))
+        invoice_base = (
+            group.invoices_to_cancel_amount * untaxed / total
+            if total else 0.0
+        )
+        advance_base = group.advance_amount
+        if invoice_base or advance_base:
+            return invoice_base + advance_base
+        return group.payments_amount
 
     def _tax_compute_all_helper(self):
         """Calcula la retención del período aplicando RG 830.
@@ -209,6 +192,104 @@ class AccountPaymentGroupWithholding(models.Model):
         if self.tax_id.l10n_ar_minimum_threshold > tax_amount:
             tax_amount = 0.0
         return tax_amount, tax_account_id, tax_repartition_line_id
+
+    def _post_calculation_check_to_chatter(self):
+        """Verifica el monto cargado contra el cálculo paramétrico y deja
+        constancia en el chatter del payment_group.
+
+        Aplica a clientes (lo que ya nos retuvieron, comparado contra la
+        fórmula del régimen aplicada a la base que el cajero declara del
+        certificado) y a proveedores (el cálculo que el sistema haría con
+        los parámetros vigentes, contra el que el cajero decidió aplicar).
+
+        No bloquea: si hay diferencia, registra REVISAR. La decisión de
+        seguir o ajustar queda con el operador.
+        """
+        for w in self:
+            group = w.payment_group_id
+            if not group or not w.tax_id:
+                continue
+            try:
+                expected_amount, _account, _rep = w._tax_compute_all_helper()
+            except Exception as exc:
+                group.message_post(
+                    body=Markup(
+                        "<p><strong>Verificación retención %s</strong></p>"
+                        "<p>No se pudo correr el cálculo paramétrico: %s</p>"
+                    ) % (
+                        html_escape(w.tax_id.name or ""),
+                        html_escape(str(exc)),
+                    ),
+                    subject=_("Verificación de retención"),
+                    message_type="comment",
+                    subtype_xmlid="mail.mt_note",
+                )
+                continue
+            loaded_amount = w.amount or 0.0
+            expected_base = w._compute_expected_base_amount()
+            loaded_base = w.base_amount or 0.0
+            currency = group.currency_id
+            diff_amount = loaded_amount - expected_amount
+            diff_base = loaded_base - expected_base
+            ok_amount = (
+                currency.is_zero(diff_amount) if currency
+                else abs(diff_amount) < 0.01
+            )
+            ok_base = (
+                currency.is_zero(diff_base) if currency
+                else abs(diff_base) < 0.01
+            )
+            estado = "OK" if (ok_amount and ok_base) else "REVISAR"
+            color = "#1e7e34" if estado == "OK" else "#b02a37"
+            sym = currency.symbol if currency else ""
+            fmt = lambda v: "{} {:,.2f}".format(sym, v)
+            partner_label = (
+                _("retención que nos aplican")
+                if group.partner_type == "customer"
+                else _("retención que aplicamos al proveedor")
+            )
+            body = (
+                "<p><strong>Verificación de %s — %s</strong></p>"
+                "<p>Régimen: %s</p>"
+                "<table style=\"border-collapse:collapse;\">"
+                "<tr><td style=\"padding:2px 8px;\"></td>"
+                "<td style=\"padding:2px 8px;text-align:right;\"><strong>Cargado</strong></td>"
+                "<td style=\"padding:2px 8px;text-align:right;\"><strong>Esperado</strong></td>"
+                "<td style=\"padding:2px 8px;text-align:right;\"><strong>Diferencia</strong></td></tr>"
+                "<tr><td style=\"padding:2px 8px;\">Base</td>"
+                "<td style=\"padding:2px 8px;text-align:right;\">%s</td>"
+                "<td style=\"padding:2px 8px;text-align:right;\">%s</td>"
+                "<td style=\"padding:2px 8px;text-align:right;\">%s</td></tr>"
+                "<tr><td style=\"padding:2px 8px;\">Monto retenido</td>"
+                "<td style=\"padding:2px 8px;text-align:right;\">%s</td>"
+                "<td style=\"padding:2px 8px;text-align:right;\">%s</td>"
+                "<td style=\"padding:2px 8px;text-align:right;\">%s</td></tr>"
+                "</table>"
+                "<p style=\"color:%s;\"><strong>%s</strong></p>"
+                "<p style=\"font-size:smaller;color:#666;\">Cálculo "
+                "paramétrico según RG 830 / régimen y acumulado del "
+                "período sobre los registros del sistema.</p>"
+            ) % (
+                html_escape(partner_label),
+                html_escape(w.tax_id.name or ""),
+                html_escape(w.get_regimen_label()),
+                html_escape(fmt(loaded_base)),
+                html_escape(fmt(expected_base)),
+                html_escape(fmt(diff_base)),
+                html_escape(fmt(loaded_amount)),
+                html_escape(fmt(expected_amount)),
+                html_escape(fmt(diff_amount)),
+                color,
+                html_escape(estado),
+            )
+            group.message_post(
+                body=Markup(body),
+                subject=_(
+                    "Verificación de retención — %s"
+                ) % (w.tax_id.name or ""),
+                message_type="comment",
+                subtype_xmlid="mail.mt_note",
+            )
 
     def _ensure_name(self):
         for w in self.filtered(lambda x: not x.name):

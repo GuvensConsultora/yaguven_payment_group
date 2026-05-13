@@ -552,12 +552,12 @@ class AccountPaymentGroup(models.Model):
 
         write_off_line_vals = []
         for w in self.withholding_ids:
-            amount, account_id, repartition_id = w._tax_compute_all_helper()
+            _expected, account_id, repartition_id = w._tax_compute_all_helper()
             write_off_line_vals.append({
                 "name": w.name,
                 "account_id": account_id,
-                "amount_currency": sign * amount,
-                "balance": sign * amount,
+                "amount_currency": sign * w.amount,
+                "balance": sign * w.amount,
                 "tax_base_amount": sign * w.base_amount,
                 "tax_repartition_line_id": repartition_id,
                 "currency_id": target.currency_id.id,
@@ -583,6 +583,7 @@ class AccountPaymentGroup(models.Model):
 
             group._check_anticipo_balance()
             group._apply_withholdings_to_target_payment()
+            group.withholding_ids._post_calculation_check_to_chatter()
 
             # En Odoo 19 account.payment.action_post() ya no crea el
             # move; lo difiere al matching con statement bancaria. Para
