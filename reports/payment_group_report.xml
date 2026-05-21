@@ -71,7 +71,12 @@
                     <tbody>
                         <tr t-foreach="o.to_pay_move_line_ids.sorted(key=lambda l: (l.date, l.move_id.name))" t-as="l">
                             <td><span t-field="l.date"/></td>
-                            <td><span t-field="l.move_id.name"/></td>
+                            <td>
+                                <span t-field="l.move_id.name"/>
+                                <div t-if="l.move_id.ref" class="text-muted">
+                                    <small>Ref.: <span t-field="l.move_id.ref"/></small>
+                                </div>
+                            </td>
                             <td class="text-end">
                                 <span t-esc="o._get_line_cancelled_amount(l)"
                                       t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
