@@ -87,7 +87,7 @@
                             </td>
                         </tr>
                     </tbody>
-                    <tfoot>
+                    <tbody>
                         <tr style="border-top: 2px solid #000;">
                             <th colspan="2" class="text-end" style="font-size: 1.15rem;">Total</th>
                             <th class="text-end" style="font-size: 1.15rem;">
@@ -99,7 +99,7 @@
                                       t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
                             </th>
                         </tr>
-                    </tfoot>
+                    </tbody>
                 </table>
                 <div t-if="o.pending_balance_amount" class="row mt-2">
                     <div class="col-12 text-end text-danger">
@@ -210,7 +210,7 @@
                             </td>
                         </tr>
                     </tbody>
-                    <tfoot>
+                    <tbody>
                         <tr t-if="o.withholdings_amount">
                             <th colspan="3" class="text-end text-muted">Subtotal medios de pago</th>
                             <th class="text-end text-muted">
@@ -232,7 +232,7 @@
                                       t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
                             </th>
                         </tr>
-                    </tfoot>
+                    </tbody>
                 </table>
 
                 <div class="row mt-3" t-if="o.net_to_cancel_amount">
