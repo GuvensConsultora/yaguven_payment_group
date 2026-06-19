@@ -91,7 +91,7 @@
                         <tr style="border-top: 2px solid #000;">
                             <th colspan="2" class="text-end" style="font-size: 1.15rem;">Total</th>
                             <th class="text-end" style="font-size: 1.15rem;">
-                                <span t-field="o.to_pay_amount"
+                                <span t-esc="sum(o._get_line_cancelled_amount(l) for l in o.to_pay_move_line_ids)"
                                       t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
                             </th>
                             <th class="text-end" style="font-size: 1.15rem;">
