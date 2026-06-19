@@ -554,25 +554,57 @@ class AccountPaymentGroup(models.Model):
                 "account.payment.method.line.payment_account_id)."
             ))
 
-        sign = 1 if self.partner_type == "customer" else -1
+        # psign: +1 cobro (inbound), -1 pago (outbound).
+        psign = 1 if target.payment_type == "inbound" else -1
         self.withholding_ids._ensure_name()
 
-        write_off_line_vals = []
+        net = target.amount
+        wth_total = sum(self.withholding_ids.mapped("amount"))
+        gross = net + wth_total
+        cur = target.currency_id.id
+
+        # Asiento EXPLÍCITO (line_ids) — control total para que la
+        # contrapartida quede en BRUTO y cancele la factura, y la línea
+        # de retención conserve base + régimen para el SICORE.
+        # No usamos write_off_line_vals: el motor nativo de withholding
+        # de Odoo 19 los descarta al combinarlos en _prepare_move_lines_per_type
+        # ("We don't support to combine write_off_lines and withholding_lines"),
+        # dejando la contrapartida en el NETO y la factura sin cancelar.
+        line_ids = [
+            (0, 0, {
+                "name": target.payment_method_line_id.name or _("Pago"),
+                "account_id": target.outstanding_account_id.id,
+                "balance": psign * net,
+                "amount_currency": psign * net,
+                "currency_id": cur,
+            }),
+            (0, 0, {
+                "name": self.communication or self.name or _("Recibo/OP"),
+                "account_id": target.destination_account_id.id,
+                "partner_id": self.partner_id.id,
+                "balance": -psign * gross,
+                "amount_currency": -psign * gross,
+                "currency_id": cur,
+            }),
+        ]
         for w in self.withholding_ids:
+            # _tax_compute_all_helper aplica RG 830 (mínimo no sujeto,
+            # escala, mínimo de retención, acumulado del mes) y devuelve
+            # la cuenta de retención + repartition. El importe imputado es
+            # w.amount (en migración = el valor histórico ya 830; en alta
+            # nueva el usuario carga el que el helper calcula).
             _expected, account_id, repartition_id = w._tax_compute_all_helper()
-            write_off_line_vals.append({
+            line_ids.append((0, 0, {
                 "name": w.name,
                 "account_id": account_id,
-                "amount_currency": sign * w.amount,
-                "balance": sign * w.amount,
-                "tax_base_amount": sign * w.base_amount,
+                "balance": psign * w.amount,
+                "amount_currency": psign * w.amount,
+                "tax_base_amount": psign * w.base_amount,
                 "tax_repartition_line_id": repartition_id,
-                "currency_id": target.currency_id.id,
-            })
+                "currency_id": cur,
+            }))
 
-        target._generate_journal_entry(
-            write_off_line_vals=write_off_line_vals
-        )
+        target._generate_journal_entry(line_ids=line_ids)
 
     def action_post(self):
         for group in self:
