@@ -250,7 +250,10 @@ class AccountPaymentGroup(models.Model):
         """
         self.ensure_one()
         if self.state != "posted":
-            return abs(line.amount_residual)
+            residual = abs(line.amount_residual)
+            if line.move_id.move_type in ("in_refund", "out_refund"):
+                return -residual
+            return residual
         counterparts = self.matched_move_line_ids - line
         if not counterparts:
             return 0.0
@@ -263,7 +266,11 @@ class AccountPaymentGroup(models.Model):
         ) | line.matched_credit_ids.filtered(
             lambda p: p.credit_move_id in counterparts
         )
-        return sum(partials.mapped("amount"))
+        amount = sum(partials.mapped("amount"))
+        # NC/ND invierten el signo: son descuentos en el total a cancelar
+        if line.move_id.move_type in ("in_refund", "out_refund"):
+            return -amount
+        return amount
 
     @api.depends(
         "state",
