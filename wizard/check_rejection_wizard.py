@@ -76,7 +76,8 @@ class L10nLatamCheckRejectionWizard(models.TransientModel):
     expense_account_id = fields.Many2one(
         "account.account",
         string="Cuenta de gastos a facturar",
-        domain=[("account_type", "in", ("income", "income_other"))],
+        domain="[('account_type', 'in', ('income', 'income_other')),"
+               " ('company_ids', 'in', company_id)]",
     )
     expense_tax_id = fields.Many2one(
         "account.tax",
