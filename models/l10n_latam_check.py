@@ -43,6 +43,53 @@ class L10nLatamCheck(models.Model):
              "trazabilidad geográfica de la cartera de cheques de "
              "tercero (riesgo por plaza).",
     )
+    rejected = fields.Boolean(
+        string="Rechazado",
+        readonly=True,
+        copy=False,
+        help="Tildado cuando el cheque fue rechazado por el banco "
+             "(sin fondos, orden de no pago, etc.).",
+    )
+    rejection_date = fields.Date(
+        string="Fecha de rechazo",
+        readonly=True,
+        copy=False,
+    )
+    rejection_reason = fields.Char(
+        string="Motivo de rechazo",
+        readonly=True,
+        copy=False,
+    )
+    debit_note_id = fields.Many2one(
+        "account.move",
+        string="ND por gastos de rechazo",
+        readonly=True,
+        copy=False,
+        help="Nota de débito generada al partner por los gastos "
+             "bancarios/administrativos del rechazo, si correspondió "
+             "cobrarlos.",
+    )
+
+    def action_reject_check(self):
+        self.ensure_one()
+        if self.rejected:
+            raise ValidationError(_(
+                "El cheque %s ya está marcado como rechazado.",
+                self.name or "—",
+            ))
+        if not self.payment_id or self.payment_id.payment_type != "inbound":
+            raise ValidationError(_(
+                "Solo se puede marcar como rechazado un cheque recibido "
+                "de un cliente (cobro), no un cheque propio entregado."
+            ))
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Cheque rechazado"),
+            "res_model": "l10n_latam.check.rejection.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_check_id": self.id},
+        }
 
     _LEGAL_DAYS_COMMON = 30
     _LEGAL_DAYS_ECHEQ = 360

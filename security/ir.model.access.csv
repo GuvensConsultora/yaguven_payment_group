@@ -6,3 +6,4 @@ access_account_payment_group_book_manager,account.payment.group.book manager,mod
 access_account_payment_group_withholding_user,account.payment.group.withholding user,model_account_payment_group_withholding,account.group_account_invoice,1,1,1,1
 access_account_payment_group_withholding_manager,account.payment.group.withholding manager,model_account_payment_group_withholding,account.group_account_manager,1,1,1,1
 access_sicore_export_wizard_user,sicore.export.wizard user,model_sicore_export_wizard,account.group_account_invoice,1,1,1,1
+access_l10n_latam_check_rejection_wizard_user,l10n_latam.check.rejection.wizard user,model_l10n_latam_check_rejection_wizard,account.group_account_invoice,1,1,1,1

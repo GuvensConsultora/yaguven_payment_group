@@ -23,4 +23,27 @@
         </field>
     </record>
 
+    <!-- Cheque de cliente rechazado: botón + campos de trazabilidad en
+         el form nativo del cheque. -->
+    <record id="l10n_latam_check_view_form_rejection" model="ir.ui.view">
+        <field name="name">l10n_latam.check.form.rejection.yaguven</field>
+        <field name="model">l10n_latam.check</field>
+        <field name="inherit_id" ref="l10n_latam_check.l10n_latam_check_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button type="object"
+                        name="action_reject_check"
+                        string="Cheque rechazado"
+                        icon="fa-ban"
+                        invisible="rejected"/>
+            </xpath>
+            <field name="name" position="after">
+                <field name="rejected"/>
+                <field name="rejection_date" invisible="not rejected"/>
+                <field name="rejection_reason" invisible="not rejected"/>
+                <field name="debit_note_id" invisible="not debit_note_id"/>
+            </field>
+        </field>
+    </record>
+
 </odoo>
