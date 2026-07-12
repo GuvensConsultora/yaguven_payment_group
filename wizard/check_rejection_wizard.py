@@ -14,7 +14,10 @@ Circuito contable de un cheque de cliente rechazado por el banco:
 3. Opcionalmente genera la Nota de Débito de gastos bancarios al
    partner, usando el wizard nativo `account.debit.note` con
    `debit_origin_id` apuntando a la primera factura afectada (por
-   fecha) — es lo que ARCA necesita para validarla.
+   fecha) — es lo que ARCA necesita para validarla. Queda en
+   BORRADOR a propósito: la corrección contable (pasos 1-2) no debe
+   depender de que ARCA esté disponible en el momento del rechazo.
+   Confirmar/pedir CAE de la ND es un paso posterior y manual.
 """
 from markupsafe import Markup
 
@@ -226,5 +229,4 @@ class L10nLatamCheckRejectionWizard(models.TransientModel):
                 ),
             })],
         })
-        new_move.action_post()
         self.check_id.write({"debit_note_id": new_move.id})
