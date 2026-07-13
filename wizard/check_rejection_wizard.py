@@ -170,6 +170,9 @@ class L10nLatamCheckRejectionWizard(models.TransientModel):
         single_medio = len(group.payment_ids) == 1
         if single_medio:
             group.action_cancel()
+            action_desc = _(
+                "Se canceló el recibo completo (era el único medio de pago)."
+            )
         else:
             pay_line.remove_move_reconcile()
             today = fields.Date.context_today(self)
@@ -181,6 +184,11 @@ class L10nLatamCheckRejectionWizard(models.TransientModel):
                 cancel=True,
             )
             payment.write({"state": "rejected"})
+            action_desc = _(
+                "El recibo mezclaba varios medios de pago: se desconcilió y "
+                "reversó únicamente la línea de este cheque. El resto del "
+                "recibo sigue confirmado."
+            )
 
         check.write({
             "rejected": True,
@@ -188,22 +196,64 @@ class L10nLatamCheckRejectionWizard(models.TransientModel):
             "rejection_reason": self.rejection_reason,
         })
 
-        note_body = (
-            "<p><strong>Cheque rechazado</strong></p>"
-            "<p>Cheque: %s<br/>Fecha de rechazo: %s<br/>Motivo: %s</p>"
-        ) % (
-            html_escape(check.name or "—"),
-            html_escape(str(self.rejection_date)),
-            html_escape(self.rejection_reason),
-        )
+        debit_note_move = False
+        if self.charge_expenses and affected_moves:
+            debit_note_move = self._create_expense_debit_note(affected_moves[0])
+
+        note_body = self._build_note_body(action_desc, affected_moves, debit_note_move)
+        self._post_note(check, note_body)
         self._post_note(group, note_body)
         for move in affected_moves:
             self._post_note(move, note_body)
 
-        if self.charge_expenses and affected_moves:
-            self._create_expense_debit_note(affected_moves[0])
-
         return {"type": "ir.actions.act_window_close"}
+
+    def _build_note_body(self, action_desc, affected_moves, debit_note_move):
+        self.ensure_one()
+        parts = [
+            "<p><strong>%s</strong></p>" % html_escape(_("Cheque rechazado")),
+            "<p>%s</p>" % html_escape(action_desc),
+            "<ul>",
+            "<li>%s: %s</li>" % (
+                html_escape(_("Cheque")), html_escape(self.check_id.name or "—"),
+            ),
+            "<li>%s: %s</li>" % (
+                html_escape(_("Cliente")), html_escape(self.partner_id.display_name or "—"),
+            ),
+            "<li>%s: %s</li>" % (
+                html_escape(_("Fecha de rechazo")), html_escape(str(self.rejection_date)),
+            ),
+            "<li>%s: %s</li>" % (
+                html_escape(_("Motivo")), html_escape(self.rejection_reason or "—"),
+            ),
+            "</ul>",
+        ]
+        if affected_moves:
+            parts.append("<p>%s</p><ul>" % html_escape(_("Facturas que vuelven a quedar abiertas:")))
+            for mv in affected_moves:
+                parts.append("<li>%s — saldo pendiente %s</li>" % (
+                    html_escape(mv.name or "—"),
+                    html_escape(str(mv.amount_residual)),
+                ))
+            parts.append("</ul>")
+        if debit_note_move:
+            tax_desc = self.expense_tax_id.name if self.expense_tax_id else _("sin IVA")
+            parts.append("<p>%s: <strong>%s</strong> — %s (%s)</p>" % (
+                html_escape(_("Nota de Débito por gastos generada")),
+                html_escape(debit_note_move.name or "—"),
+                html_escape(str(self.expense_amount)),
+                html_escape(tax_desc),
+            ))
+        elif self.charge_expenses:
+            parts.append("<p>%s</p>" % html_escape(_(
+                "No se generó la Nota de Débito por gastos (no se encontró "
+                "ninguna factura afectada)."
+            )))
+        else:
+            parts.append("<p>%s</p>" % html_escape(_(
+                "No se cobraron gastos administrativos por este rechazo."
+            )))
+        return "".join(parts)
 
     def _get_expense_debit_note_journal(self, origin_move):
         """Diario de venta ACTIVO para la ND de gastos.
@@ -257,3 +307,4 @@ class L10nLatamCheckRejectionWizard(models.TransientModel):
             })],
         })
         self.check_id.write({"debit_note_id": new_move.id})
+        return new_move
