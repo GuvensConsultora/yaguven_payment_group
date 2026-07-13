@@ -240,7 +240,7 @@ class L10nLatamCheckRejectionWizard(models.TransientModel):
             tax_desc = self.expense_tax_id.name if self.expense_tax_id else _("sin IVA")
             parts.append("<p>%s: <strong>%s</strong> — %s (%s)</p>" % (
                 html_escape(_("Nota de Débito por gastos generada")),
-                html_escape(debit_note_move.name or "—"),
+                html_escape(debit_note_move.display_name or "—"),
                 html_escape(str(self.expense_amount)),
                 html_escape(tax_desc),
             ))
