@@ -205,8 +205,34 @@ class L10nLatamCheckRejectionWizard(models.TransientModel):
 
         return {"type": "ir.actions.act_window_close"}
 
+    def _get_expense_debit_note_journal(self, origin_move):
+        """Diario de venta ACTIVO para la ND de gastos.
+
+        Si la factura origen vive en un diario histórico de migración /
+        preimpreso (bloqueados para altas nuevas por la ir.rule "Camilleti:
+        bloquear alta en diarios históricos"), el wizard nativo
+        `account.debit.note` copia por default el diario de la factura
+        origen y la creación de la ND revienta con AccessError — nadie,
+        ni admin, puede dar de alta ahí. Se busca el diario de venta
+        vigente de la misma compañía como reemplazo.
+        """
+        origin_journal = origin_move.journal_id
+        name = (origin_journal.name or "").lower()
+        if "hist" not in name and "migra" not in name:
+            return origin_journal
+        return self.env["account.journal"].search([
+            ("type", "=", "sale"),
+            ("company_id", "=", origin_move.company_id.id),
+            ("l10n_latam_use_documents", "=", origin_journal.l10n_latam_use_documents),
+            ("active", "=", True),
+            ("id", "!=", origin_journal.id),
+            ("name", "not ilike", "hist"),
+            ("name", "not ilike", "migra"),
+        ], limit=1) or origin_journal
+
     def _create_expense_debit_note(self, origin_move):
         self.ensure_one()
+        journal = self._get_expense_debit_note_journal(origin_move)
         debit_note_wiz = self.env["account.debit.note"].with_context(
             active_model="account.move",
             active_ids=origin_move.ids,
@@ -214,6 +240,7 @@ class L10nLatamCheckRejectionWizard(models.TransientModel):
             "date": self.rejection_date,
             "reason": self.expense_description,
             "copy_lines": False,
+            "journal_id": journal.id if journal != origin_move.journal_id else False,
         })
         action = debit_note_wiz.create_debit()
         new_move = self.env["account.move"].browse(action["res_id"])
