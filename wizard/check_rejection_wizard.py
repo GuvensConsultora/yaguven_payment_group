@@ -19,6 +19,8 @@ Circuito contable de un cheque de cliente rechazado por el banco:
    depender de que ARCA esté disponible en el momento del rechazo.
    Confirmar/pedir CAE de la ND es un paso posterior y manual.
 """
+import ast
+
 from markupsafe import Markup
 
 from odoo import _, api, fields, models
@@ -255,11 +257,36 @@ class L10nLatamCheckRejectionWizard(models.TransientModel):
             )))
         return "".join(parts)
 
+    def _get_blocked_journal_ids(self):
+        """IDs de diario excluidos de altas nuevas según la ir.rule vigente
+        de account.move con patrón `[('journal_id', 'not in', [...])]`.
+
+        No se infiere por nombre (un diario histórico puede no tener "hist"
+        ni "migra" en el nombre, p.ej. "Ventas Preimpreso") — se lee la
+        regla real para no quedar desalineado si cambia la lista.
+        """
+        rules = self.env["ir.rule"].sudo().search([
+            ("model_id.model", "=", "account.move"),
+            ("domain_force", "like", "journal_id"),
+            ("domain_force", "like", "not in"),
+        ])
+        blocked = set()
+        for rule in rules:
+            try:
+                domain = ast.literal_eval(rule.domain_force)
+            except (ValueError, SyntaxError):
+                continue
+            for leaf in domain:
+                if (isinstance(leaf, (list, tuple)) and len(leaf) == 3
+                        and leaf[0] == "journal_id" and leaf[1] == "not in"):
+                    blocked.update(leaf[2])
+        return blocked
+
     def _get_expense_debit_note_journal(self, origin_move):
         """Diario de venta ACTIVO para la ND de gastos.
 
-        Si la factura origen vive en un diario histórico de migración /
-        preimpreso (bloqueados para altas nuevas por la ir.rule "Camilleti:
+        Si la factura origen vive en un diario bloqueado para altas nuevas
+        (histórico de migración, preimpreso, etc. — ver ir.rule "Camilleti:
         bloquear alta en diarios históricos"), el wizard nativo
         `account.debit.note` copia por default el diario de la factura
         origen y la creación de la ND revienta con AccessError — nadie,
@@ -267,17 +294,15 @@ class L10nLatamCheckRejectionWizard(models.TransientModel):
         vigente de la misma compañía como reemplazo.
         """
         origin_journal = origin_move.journal_id
-        name = (origin_journal.name or "").lower()
-        if "hist" not in name and "migra" not in name:
+        blocked_ids = self._get_blocked_journal_ids()
+        if origin_journal.id not in blocked_ids:
             return origin_journal
         return self.env["account.journal"].search([
             ("type", "=", "sale"),
             ("company_id", "=", origin_move.company_id.id),
             ("l10n_latam_use_documents", "=", origin_journal.l10n_latam_use_documents),
             ("active", "=", True),
-            ("id", "!=", origin_journal.id),
-            ("name", "not ilike", "hist"),
-            ("name", "not ilike", "migra"),
+            ("id", "not in", list(blocked_ids)),
         ], limit=1) or origin_journal
 
     def _create_expense_debit_note(self, origin_move):
