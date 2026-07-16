@@ -317,10 +317,9 @@ class AccountPaymentGroup(models.Model):
             if group.state == "posted":
                 total = 0.0
                 for l in doc_lines:
-                    amt = group._get_line_cancelled_amount(l)
-                    if l.move_id.move_type == refund_type:
-                        amt = -amt
-                    total += amt
+                    # _get_line_cancelled_amount ya devuelve la NC/ND con signo
+                    # invertido (líneas ~271-272) — no volver a invertirla acá.
+                    total += group._get_line_cancelled_amount(l)
                 group.invoices_to_cancel_amount = total
                 continue
             group.invoices_to_cancel_amount = sign * sum(
