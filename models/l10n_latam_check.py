@@ -135,6 +135,7 @@ class L10nLatamCheck(models.Model):
                 ("name", "=", chk.name),
                 ("bank_id", "=", chk.bank_id.id),
                 ("is_echeq", "=", chk.is_echeq),
+                ("company_id", "=", chk.company_id.id),
             ], limit=1)
             if dup:
                 raise ValidationError(_(
