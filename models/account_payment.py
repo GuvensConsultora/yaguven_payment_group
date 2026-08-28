@@ -21,6 +21,40 @@ class AccountPayment(models.Model):
             if not pay.outstanding_account_id and pay.journal_id.default_account_id:
                 pay.outstanding_account_id = pay.journal_id.default_account_id
 
+    # ── Sincronización pago ↔ asiento con retenciones ────────────────────
+    #
+    # Cuando el recibo/OP tiene retenciones, el asiento NO es el de dos líneas
+    # que arma Odoo: `_apply_withholdings` lo genera explícitamente con la
+    # contrapartida en BRUTO más una línea por retención (ver
+    # account_payment_group.py). El sincronizador nativo no conoce esas líneas:
+    # al leer o regenerar el asiento lo reconstruye con la contrapartida en
+    # NETO, y la diferencia es exactamente el importe retenido.
+    #
+    # Efecto práctico del bug (Arauco, 06/08/2026): `button_draft` sobre
+    # cualquier pago con retenciones fallaba con "El asiento no está
+    # balanceado" AUNQUE el asiento estuviera balanceado (débito − crédito = 0).
+    # Como draft → write → post es el mecanismo con el que se corrige todo,
+    # esos pagos quedaban imposibles de editar. Reproducción: account.payment
+    # 1984 (PMACR/2026/00008), con $15.633,63 de retenciones sobre $442.500.
+    #
+    # Estos pagos quedan fuera de la sincronización en las dos direcciones: su
+    # asiento es responsabilidad de este módulo, que lo arma completo al
+    # confirmar el grupo.
+
+    def _con_retenciones(self):
+        """Pagos cuyo asiento arma este módulo por tener retenciones."""
+        return self.filtered(lambda p: p.payment_group_id.withholding_ids)
+
+    def _synchronize_to_moves(self, changed_fields):
+        return super(
+            AccountPayment, self - self._con_retenciones()
+        )._synchronize_to_moves(changed_fields)
+
+    def _synchronize_from_moves(self, changed_fields):
+        return super(
+            AccountPayment, self - self._con_retenciones()
+        )._synchronize_from_moves(changed_fields)
+
     payment_group_id = fields.Many2one(
         "account.payment.group",
         string="Recibo / OP",

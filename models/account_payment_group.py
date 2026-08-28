@@ -619,6 +619,19 @@ class AccountPaymentGroup(models.Model):
                     "Verificá que el talonario tenga una secuencia asignada."
                 ))
 
+            # La fecha del recibo manda sobre la de sus pagos. Un recibo se
+            # puede armar un día y confirmar otro —queda en borrador porque no
+            # se cobró—, y hasta acá el pago conservaba la fecha con que se
+            # creó: el recibo impreso decía una fecha y el asiento otra.
+            # Caso 2026-08-27, MADERAS SSAP: recibo del 27, pago del 22.
+            if group.payment_date:
+                desfasados = group.payment_ids.filtered(
+                    lambda p: p.date != group.payment_date)
+                for pay in desfasados:
+                    pay.date = group.payment_date
+                    if pay.move_id and pay.move_id.state == "draft":
+                        pay.move_id.date = group.payment_date
+
             group._check_anticipo_balance()
             group._apply_withholdings_to_target_payment()
             group.withholding_ids._post_calculation_check_to_chatter()
