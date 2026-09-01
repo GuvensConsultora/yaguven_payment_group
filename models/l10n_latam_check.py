@@ -1,5 +1,6 @@
 from odoo import _, api, fields, models
 from odoo.exceptions import ValidationError
+from odoo.tools import format_date, formatLang
 
 
 class L10nLatamCheck(models.Model):
@@ -145,15 +146,23 @@ class L10nLatamCheck(models.Model):
                 # mensaje sólo daba "(id 1638)" — hubo que buscarlo por base.
                 grupo = dup.payment_id.payment_group_id if dup.payment_id else False
                 if grupo:
+                    # El estado va con su etiqueta traducida, no con el valor
+                    # técnico: `_fields[...].selection` devuelve "posted" y en
+                    # una pantalla en español eso no se lee. Fecha e importe,
+                    # con el formato del usuario.
+                    estados = dict(
+                        grupo._fields["state"]._description_selection(self.env))
                     donde = _(
                         "Ya está usado en %(grupo)s (%(estado)s), del %(fecha)s, "
                         "a nombre de %(partner)s por %(importe)s.",
                         grupo=grupo.display_name,
-                        estado=dict(grupo._fields["state"].selection).get(
-                            grupo.state, grupo.state),
-                        fecha=grupo.payment_date or dup.payment_id.date,
+                        estado=estados.get(grupo.state, grupo.state),
+                        fecha=format_date(
+                            self.env, grupo.payment_date or dup.payment_id.date),
                         partner=grupo.partner_id.display_name or "—",
-                        importe=dup.amount,
+                        importe=formatLang(
+                            self.env, dup.amount,
+                            currency_obj=dup.currency_id or grupo.company_id.currency_id),
                     )
                 elif dup.payment_id:
                     donde = _("Ya está usado en el pago %(pago)s.",
