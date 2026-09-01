@@ -138,9 +138,34 @@ class L10nLatamCheck(models.Model):
                 ("company_id", "=", chk.company_id.id),
             ], limit=1)
             if dup:
+                # El id interno del cheque no le sirve a nadie para ubicarlo:
+                # hay que decir en QUÉ orden de pago / recibo está usado, que es
+                # a dónde tiene que ir el operador. Caso 2026-09-01: un eCheq ya
+                # cargado en una OP de agosto se intentó cargar de nuevo, y el
+                # mensaje sólo daba "(id 1638)" — hubo que buscarlo por base.
+                grupo = dup.payment_id.payment_group_id if dup.payment_id else False
+                if grupo:
+                    donde = _(
+                        "Ya está usado en %(grupo)s (%(estado)s), del %(fecha)s, "
+                        "a nombre de %(partner)s por %(importe)s.",
+                        grupo=grupo.display_name,
+                        estado=dict(grupo._fields["state"].selection).get(
+                            grupo.state, grupo.state),
+                        fecha=grupo.payment_date or dup.payment_id.date,
+                        partner=grupo.partner_id.display_name or "—",
+                        importe=dup.amount,
+                    )
+                elif dup.payment_id:
+                    donde = _("Ya está usado en el pago %(pago)s.",
+                              pago=dup.payment_id.display_name)
+                else:
+                    donde = _("Figura cargado pero sin pago asociado.")
                 raise ValidationError(_(
                     "Ya existe un cheque con número %(name)s del banco "
-                    "%(bank)s (id %(id)s). No se permiten duplicados — "
-                    "cada cheque debe tener número único por banco.",
-                    name=chk.name, bank=chk.bank_id.name, id=dup.id,
+                    "%(bank)s. No se permiten duplicados — cada cheque debe "
+                    "tener número único por banco.\n\n%(donde)s\n\n"
+                    "Si ese pago es el mismo que estás cargando, no hace falta "
+                    "cargarlo de nuevo: aplicalo desde la factura, en los pagos "
+                    "pendientes de aplicar.",
+                    name=chk.name, bank=chk.bank_id.name, donde=donde,
                 ))
