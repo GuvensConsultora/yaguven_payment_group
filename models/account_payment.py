@@ -84,6 +84,12 @@ class AccountPayment(models.Model):
         size=4,
     )
     card_voucher_number = fields.Char(string="Cupón")
+    # Lote y terminal: los pide el cajero del ticket de la terminal, igual que el
+    # cupón. Ya existían del lado del POS (`pos.payment` en `yaguven_pos_tarjeta`)
+    # y faltaban acá, así que un cobro con tarjeta cargado desde contabilidad no
+    # podía guardarlos. Mismos nombres que en el POS a propósito: es el mismo dato.
+    card_batch_number = fields.Char(string="Lote")
+    card_terminal = fields.Char(string="Terminal")
     card_authorization_code = fields.Char(string="Cód. autorización")
     card_installments = fields.Integer(string="Cuotas", default=1)
     card_holder_name = fields.Char(string="Titular")

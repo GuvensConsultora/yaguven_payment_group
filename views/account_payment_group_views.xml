@@ -237,8 +237,10 @@
                                                         <field name="card_brand"/>
                                                         <field name="card_last_digits"/>
                                                         <field name="card_voucher_number"/>
+                                                        <field name="card_batch_number"/>
                                                     </group>
                                                     <group>
+                                                        <field name="card_terminal"/>
                                                         <field name="card_authorization_code"/>
                                                         <field name="card_installments"/>
                                                         <field name="card_holder_name"/>
