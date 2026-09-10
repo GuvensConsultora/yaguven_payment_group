@@ -97,8 +97,21 @@ class L10nLatamCheck(models.Model):
 
     @api.constrains("issue_date", "payment_date", "at_sight", "is_echeq", "is_cpd")
     def _check_payment_period(self):
+        """Fechas coherentes con el tipo de cheque.
+
+        EL CHEQUE A LA VISTA TAMBIEN SE CONTROLA. Es el cheque comun, y por la
+        Ley 24.452 tiene 30 dias desde la emision para presentarse: uno marcado
+        a la vista con fecha de cobro a 45 dias es, en realidad, un cheque de
+        pago diferido mal clasificado. Cargado asi, el plazo real del cheque
+        MIENTE en el listado de cartera, que es justamente para lo que se lleva.
+
+        Sin fecha de emision se toma la de cobro como referencia y no se
+        controla el plazo: no hay contra que medirlo.
+        """
         for chk in self:
-            if chk.at_sight or not chk.issue_date or not chk.payment_date:
+            if not chk.payment_date:
+                continue
+            if not chk.issue_date:
                 continue
             if chk.payment_date < chk.issue_date:
                 raise ValidationError(_(
@@ -107,6 +120,7 @@ class L10nLatamCheck(models.Model):
                     name=chk.name or "—",
                     pay=chk.payment_date, iss=chk.issue_date,
                 ))
+            # El cheque a la vista usa el limite del comun: son lo mismo.
             extended = chk.is_echeq or chk.is_cpd
             limit = self._LEGAL_DAYS_ECHEQ if extended else self._LEGAL_DAYS_COMMON
             delta = (chk.payment_date - chk.issue_date).days
@@ -115,6 +129,8 @@ class L10nLatamCheck(models.Model):
                     tipo = "Echeq"
                 elif chk.is_cpd:
                     tipo = "cheque de pago diferido"
+                elif chk.at_sight:
+                    tipo = "cheque a la vista"
                 else:
                     tipo = "cheque común"
                 raise ValidationError(_(
