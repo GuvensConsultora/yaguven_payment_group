@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Sólo consulta: los registros los carga un proceso de migración o
+         convivencia de sistemas, no el usuario. Sirve para auditar qué está
+         sumando el acumulado RG 830. -->
+
+    <record id="view_account_withholding_external_list" model="ir.ui.view">
+        <field name="name">account.withholding.external.list</field>
+        <field name="model">account.withholding.external</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0">
+                <field name="date"/>
+                <field name="partner_id"/>
+                <field name="tax_id"/>
+                <field name="base_amount" sum="Total base"/>
+                <field name="amount" sum="Total retenido"/>
+                <field name="ref"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="company_id" groups="base.group_multi_company" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_account_withholding_external_search" model="ir.ui.view">
+        <field name="name">account.withholding.external.search</field>
+        <field name="model">account.withholding.external</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="partner_id"/>
+                <field name="tax_id"/>
+                <field name="ref"/>
+                <filter name="filter_date" string="Fecha" date="date"/>
+                <group>
+                    <filter name="group_partner" string="Proveedor"
+                            context="{'group_by': 'partner_id'}"/>
+                    <filter name="group_month" string="Mes"
+                            context="{'group_by': 'date:month'}"/>
+                    <filter name="group_tax" string="Régimen"
+                            context="{'group_by': 'tax_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_account_withholding_external" model="ir.actions.act_window">
+        <field name="name">Retenciones de otro sistema</field>
+        <field name="res_model">account.withholding.external</field>
+        <field name="view_mode">list</field>
+        <field name="search_view_id" ref="view_account_withholding_external_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_empty_folder">No hay retenciones de otro sistema</p>
+            <p>Retenciones practicadas fuera de este sistema que el acumulado
+               mensual de Ganancias tiene en cuenta. No generan asientos.</p>
+        </field>
+    </record>
+
+    <menuitem id="menu_account_withholding_external"
+              name="Retenciones de otro sistema"
+              parent="account.menu_finance_reports"
+              action="action_account_withholding_external"
+              sequence="81"/>
+
+</odoo>

@@ -132,6 +132,11 @@ class AccountPaymentGroupWithholding(models.Model):
         líneas dummy de base — la base vive como atributo de la línea
         de retención (patrón estilo ADHOC).
 
+        Al acumulado se le suman las retenciones practicadas en otro
+        sistema del mismo período (`account.withholding.external`): sin
+        eso, durante una convivencia de sistemas el segundo pago del mes
+        se retiene de más.
+
         Devuelve (amount, account_id, tax_repartition_line_id).
         """
         self.ensure_one()
@@ -157,6 +162,14 @@ class AccountPaymentGroupWithholding(models.Model):
             same_period_base = sum(
                 abs(l.tax_base_amount) for l in prev_lines
             )
+            ext_withholdings, ext_base = self.env[
+                "account.withholding.external"
+            ]._get_same_period_totals(
+                self.tax_id.company_id, group.partner_id, self.tax_id,
+                from_date, to_date,
+            )
+            same_period_withholdings += ext_withholdings
+            same_period_base += ext_base
             net_amount = self.base_amount + same_period_base
         else:
             net_amount = self.base_amount
@@ -243,6 +256,24 @@ class AccountPaymentGroupWithholding(models.Model):
             color = "#1e7e34" if estado == "OK" else "#b02a37"
             sym = currency.symbol if currency else ""
             fmt = lambda v: "{} {:,.2f}".format(sym, v)
+            ext_note = ""
+            if w._is_ganancias():
+                to_date = group.payment_date or date.today()
+                ext_withholdings, ext_base = self.env[
+                    "account.withholding.external"
+                ]._get_same_period_totals(
+                    w.tax_id.company_id, group.partner_id, w.tax_id,
+                    to_date + relativedelta(day=1), to_date,
+                )
+                if ext_withholdings or ext_base:
+                    ext_note = (
+                        "<p style=\"font-size:smaller;color:#666;\">El "
+                        "acumulado del mes incluye retenciones practicadas "
+                        "en otro sistema: base %s, retenido %s.</p>"
+                    ) % (
+                        html_escape(fmt(ext_base)),
+                        html_escape(fmt(ext_withholdings)),
+                    )
             partner_label = (
                 _("retención que nos aplican")
                 if group.partner_type == "customer"
@@ -269,6 +300,7 @@ class AccountPaymentGroupWithholding(models.Model):
                 "<p style=\"font-size:smaller;color:#666;\">Cálculo "
                 "paramétrico según RG 830 / régimen y acumulado del "
                 "período sobre los registros del sistema.</p>"
+                "%s"
             ) % (
                 html_escape(partner_label),
                 html_escape(w.tax_id.name or ""),
@@ -281,6 +313,7 @@ class AccountPaymentGroupWithholding(models.Model):
                 html_escape(fmt(diff_amount)),
                 color,
                 html_escape(estado),
+                ext_note,
             )
             group.message_post(
                 body=Markup(body),
