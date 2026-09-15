@@ -10,7 +10,7 @@ from markupsafe import Markup
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
-from odoo.tools.misc import html_escape
+from odoo.tools.misc import formatLang, html_escape
 
 
 class AccountPaymentGroupWithholding(models.Model):
@@ -359,11 +359,13 @@ class AccountPaymentGroupWithholding(models.Model):
         self.ensure_one()
         if self.tax_id.l10n_ar_tax_type == "earnings_scale":
             return _("Según escala (RG 830 anexo VIII)")
+        # formatLang y no "{:.2f}": el separador decimal sale del idioma de
+        # quien imprime (2,00 % en es_AR), igual que los importes del certificado.
         if self.base_amount:
             pct = (self.amount / self.base_amount) * 100.0
-            return "{:.2f} %".format(pct)
+            return "{} %".format(formatLang(self.env, pct, digits=2))
         if self.tax_id.amount_type == "percent":
-            return "{:.2f} %".format(self.tax_id.amount)
+            return "{} %".format(formatLang(self.env, self.tax_id.amount, digits=2))
         return "—"
 
     def get_regimen_label(self):

@@ -57,7 +57,7 @@
                             <strong>Razón social:</strong> <span t-field="agente.name"/>
                         </td>
                         <td style="width: 50%; padding: 2px 6px; border: 1px solid #ccc;">
-                            <strong>CUIT:</strong> <span t-field="agente.vat"/>
+                            <strong>CUIT:</strong> <span t-esc="agente.partner_id.l10n_ar_formatted_vat or agente.vat"/>
                         </td>
                     </tr>
                     <tr>
@@ -94,7 +94,7 @@
                             <strong>Razón social:</strong> <span t-field="retenido.name"/>
                         </td>
                         <td style="width: 50%; padding: 2px 6px; border: 1px solid #ccc;">
-                            <strong>CUIT:</strong> <span t-field="retenido.vat"/>
+                            <strong>CUIT:</strong> <span t-esc="retenido.l10n_ar_formatted_vat or retenido.vat"/>
                         </td>
                     </tr>
                     <tr>
