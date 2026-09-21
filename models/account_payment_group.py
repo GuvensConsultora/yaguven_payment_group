@@ -239,6 +239,21 @@ class AccountPaymentGroup(models.Model):
         for group in self:
             group.withholdings_amount = sum(group.withholding_ids.mapped("amount"))
 
+    def _ref_visible(self, texto):
+        """El texto de una referencia, o False si es una marca técnica de migración.
+
+        Una migración deja en `memo` / `ref` el id del registro de origen para
+        poder aparearlo después (p. ej. «O17-P35553»). En el recibo impreso eso
+        no le dice nada a quien lo lee. El prefijo se configura en el parámetro
+        del sistema `yaguven_payment_group.prefijo_ref_oculto` (vacío = se
+        muestra todo); no va fijo acá porque cada migración usa el suyo.
+        """
+        prefijo = self.env["ir.config_parameter"].sudo().get_param(
+            "yaguven_payment_group.prefijo_ref_oculto") or ""
+        if not texto or (prefijo and texto.startswith(prefijo)):
+            return False
+        return texto
+
     def _get_line_cancelled_amount(self, line):
         """Importe cancelado de `line` en este grupo.
 

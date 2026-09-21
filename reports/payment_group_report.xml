@@ -73,7 +73,7 @@
                             <td><span t-field="l.date"/></td>
                             <td>
                                 <span t-field="l.move_id.name"/>
-                                <div t-if="l.move_id.ref" class="text-muted">
+                                <div t-if="o._ref_visible(l.move_id.ref)" class="text-muted">
                                     <small>Ref.: <span t-field="l.move_id.ref"/></small>
                                 </div>
                             </td>
@@ -111,6 +111,11 @@
                     </div>
                 </div>
 
+                <!-- Título y tabla en un mismo bloque: sin esto wkhtmltopdf
+                     dejaba el título y el encabezado solos al pie de la hoja y
+                     las filas en la siguiente. Sobre la tabla el motor ignora
+                     page-break-inside; sobre un div de primer nivel lo respeta. -->
+                <div style="page-break-inside: avoid;">
                 <h4 class="mt-4">Medios de pago</h4>
                 <table class="table table-sm">
                     <thead>
@@ -173,12 +178,13 @@
                                     <t t-if="p.journal_id.bank_id"> · <span t-field="p.journal_id.bank_id.name"/></t>
                                     <t t-if="p.journal_id.bank_account_id.acc_number"> · cuenta <span t-field="p.journal_id.bank_account_id.acc_number"/></t>
                                 </t>
-                                <!-- Efectivo: cash journal sin cheques -->
-                                <t t-if="p.journal_id.type == 'cash'">
-                                    <strong>Efectivo</strong>
-                                </t>
+                                <!-- Sin rótulo «Efectivo»: se deducía del tipo de diario,
+                                     y un diario de tipo caja también lleva cheques de
+                                     cartera, echeqs o retenciones (así quedaron en
+                                     Lupatini): el cheque salía rotulado «Efectivo». La
+                                     columna Diario ya dice de qué caja sale. -->
                                 <!-- Memo / concepto adicional -->
-                                <div t-if="p.memo" class="text-muted">
+                                <div t-if="o._ref_visible(p.memo)" class="text-muted">
                                     <small><span t-field="p.memo"/></small>
                                 </div>
                             </td>
@@ -234,6 +240,7 @@
                         </tr>
                     </tbody>
                 </table>
+                </div>
 
                 <div class="row mt-3" t-if="o.net_to_cancel_amount">
                     <div class="col-12 text-end"
