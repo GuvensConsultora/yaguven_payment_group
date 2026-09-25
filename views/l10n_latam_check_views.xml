@@ -34,7 +34,7 @@
                 <button type="object"
                         name="action_reject_check"
                         string="Cheque rechazado"
-                        icon="fa-ban"
+                        icon="block"
                         invisible="rejected"/>
             </xpath>
             <field name="name" position="after">

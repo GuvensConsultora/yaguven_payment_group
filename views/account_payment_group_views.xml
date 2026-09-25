@@ -13,13 +13,13 @@
                             invisible="state == 'cancel'"
                             confirm="Esto generará un asiento de reversión y desconciliará los comprobantes. ¿Continuar?"/>
                     <button name="action_print_recibo" type="object"
-                            string="Imprimir" icon="fa-print" class="oe_highlight"/>
+                            string="Imprimir" icon="print" class="oe_highlight"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,posted"/>
                 </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
                         <button name="action_open_partner_account" type="object"
-                                class="oe_stat_button" icon="fa-book"
+                                class="oe_stat_button" icon="book"
                                 invisible="not partner_id">
                             <div class="o_stat_info">
                                 <field name="partner_balance_amount"
@@ -145,7 +145,7 @@
                                     <field name="state"/>
                                     <field name="move_id" column_invisible="1"/>
                                     <button name="action_open_move" type="object"
-                                            icon="fa-book" string="Asiento"
+                                            icon="book" string="Asiento"
                                             invisible="not move_id"/>
                                     <field name="partner_id" column_invisible="1"/>
                                     <field name="partner_type" column_invisible="1"/>
@@ -156,7 +156,7 @@
                                     <header>
                                         <button name="action_open_move" type="object"
                                                 string="Ver asiento contable"
-                                                icon="fa-book"
+                                                icon="book"
                                                 invisible="not move_id"/>
                                     </header>
                                     <sheet>
@@ -268,7 +268,7 @@
                                             <button name="action_print_certificate"
                                                     type="object"
                                                     string="Certificado"
-                                                    icon="fa-file-pdf-o"
+                                                    icon="picture_as_pdf"
                                                     invisible="parent.state != 'posted'"/>
                                             <field name="currency_id" column_invisible="1"/>
                                             <field name="company_id" column_invisible="1"/>
