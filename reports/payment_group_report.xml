@@ -131,7 +131,7 @@
                                     <ul class="mb-1 ps-3">
                                         <li t-foreach="p.l10n_latam_new_check_ids" t-as="ch">
                                             Nº <span t-field="ch.name"/>
-                                            <t t-if="ch.bank_account_id.bank_name"> · <span t-out="ch.bank_account_id.bank_name"/></t>
+                                            <t t-if="ch.yaguven_bank_display"> · <span t-out="ch.yaguven_bank_display"/></t>
                                             <t t-if="ch.is_echeq"> · echeq</t>
                                             <t t-if="ch.is_cpd"> · CPD</t>
                                             <t t-if="ch.payment_date"> · vto <span t-field="ch.payment_date"/></t>
@@ -148,7 +148,7 @@
                                     <ul class="mb-1 ps-3">
                                         <li t-foreach="p.l10n_latam_move_check_ids" t-as="ch">
                                             Nº <span t-field="ch.name"/>
-                                            <t t-if="ch.bank_account_id.bank_name"> · <span t-out="ch.bank_account_id.bank_name"/></t>
+                                            <t t-if="ch.yaguven_bank_display"> · <span t-out="ch.yaguven_bank_display"/></t>
                                             <t t-if="ch.payment_date"> · vto <span t-field="ch.payment_date"/></t>
                                             ·
                                             <span t-field="ch.amount"

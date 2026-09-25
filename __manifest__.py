@@ -1,6 +1,6 @@
 {
     "name": "Yagüven Payment Group",
-    "version": "20.0.3.35.2",
+    "version": "20.0.3.36.0",
     "summary": "Recibo / Orden de pago que agrupa varios account.payment contra varias facturas",
     "description": """
 Agrupa múltiples account.payment nativos (efectivo, cheque, transferencia, retenciones AR)

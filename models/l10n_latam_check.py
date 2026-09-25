@@ -6,6 +6,17 @@ from odoo.tools import format_date, formatLang
 class L10nLatamCheck(models.Model):
     _inherit = "l10n_latam.check"
 
+    # Odoo 20: res.bank desapareció y el cheque sólo trae la cuenta bancaria del librador
+    # (bank_account_id -> res.partner.bank), que exige número de cuenta. El banco del cheque
+    # se guarda como texto acá (decisión 25/09: opción A); si además hay cuenta nativa, se usa.
+    yaguven_bank_name = fields.Char(string="Banco", index=True)
+    yaguven_bank_display = fields.Char(string="Banco del cheque", compute="_compute_yaguven_bank_display")
+
+    @api.depends("yaguven_bank_name", "bank_account_id.bank_name")
+    def _compute_yaguven_bank_display(self):
+        for chk in self:
+            chk.yaguven_bank_display = chk.yaguven_bank_name or chk.bank_account_id.bank_name or ""
+
     is_echeq = fields.Boolean(
         string="Echeq",
         help="Tildar si es cheque electrónico (ECHEQ). Cambia el plazo "
@@ -142,21 +153,20 @@ class L10nLatamCheck(models.Model):
                     name=chk.name or "—", delta=delta, tipo=tipo, limit=limit,
                 ))
 
-    # Odoo 20: el cheque ya no tiene banco (res.bank desapareció); tiene la cuenta bancaria
-    # del librador (bank_account_id -> res.partner.bank) con el banco como texto (bank_name).
-    # La regla sigue siendo la misma: número único por banco.
-    @api.constrains("name", "bank_account_id", "is_echeq")
+    # Número único por banco (el banco es texto: se compara sin mayúsculas ni espacios).
+    @api.constrains("name", "yaguven_bank_name", "bank_account_id", "is_echeq")
     def _check_unique_check(self):
+        norm = lambda v: " ".join((v or "").lower().split())
         for chk in self:
-            if not chk.name or not chk.bank_account_id.bank_name:
+            banco = norm(chk.yaguven_bank_display)
+            if not chk.name or not banco:
                 continue
             dup = self.search([
                 ("id", "!=", chk.id),
                 ("name", "=", chk.name),
-                ("bank_account_id.bank_name", "=ilike", chk.bank_account_id.bank_name),
                 ("is_echeq", "=", chk.is_echeq),
                 ("company_id", "=", chk.company_id.id),
-            ], limit=1)
+            ]).filtered(lambda c: norm(c.yaguven_bank_display) == banco)[:1]
             if dup:
                 # El id interno del cheque no le sirve a nadie para ubicarlo:
                 # hay que decir en QUÉ orden de pago / recibo está usado, que es
@@ -195,5 +205,5 @@ class L10nLatamCheck(models.Model):
                     "Si ese pago es el mismo que estás cargando, no hace falta "
                     "cargarlo de nuevo: aplicalo desde la factura, en los pagos "
                     "pendientes de aplicar.",
-                    name=chk.name, bank=chk.bank_account_id.bank_name, donde=donde,
+                    name=chk.name, bank=chk.yaguven_bank_display, donde=donde,
                 ))
