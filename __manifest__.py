@@ -1,6 +1,6 @@
 {
     "name": "Yagüven Payment Group",
-    "version": "19.0.3.35.1",
+    "version": "20.0.3.35.1",
     "summary": "Recibo / Orden de pago que agrupa varios account.payment contra varias facturas",
     "description": """
 Agrupa múltiples account.payment nativos (efectivo, cheque, transferencia, retenciones AR)
@@ -21,8 +21,7 @@ para cheques). Sin dependencia de ADHOC.
         "account_debit_note",
     ],
     "data": [
-        "security/ir.model.access.csv",
-        "security/payment_group_security.xml",
+        "security/ir.access.csv",
         "data/ir_sequence_data.xml",
         "data/account_payment_group_book_data.xml",
         "data/account_move_line_actions.xml",

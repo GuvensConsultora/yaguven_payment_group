@@ -31,13 +31,10 @@ class AccountPaymentGroupBook(models.Model):
     )
     active = fields.Boolean(default=True)
 
-    _sql_constraints = [
-        (
-            "name_company_uniq",
-            "unique(name, company_id)",
-            "Ya existe un talonario con ese nombre en esta compañía.",
-        ),
-    ]
+    _name_company_uniq = models.Constraint(
+        "unique(name, company_id)",
+        "Ya existe un talonario con ese nombre en esta compañía.",
+    )
 
     def name_get(self):
         result = []

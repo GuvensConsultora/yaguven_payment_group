@@ -6,7 +6,6 @@
         <field name="model">account.payment.group</field>
         <field name="report_type">qweb-pdf</field>
         <field name="report_name">yaguven_payment_group.report_payment_group</field>
-        <field name="report_file">yaguven_payment_group.report_payment_group</field>
         <field name="binding_model_id" ref="model_account_payment_group"/>
         <field name="binding_type">report</field>
         <!-- Título del PDF generado: "Recibo XXX" para cobros (inbound),
@@ -78,11 +77,11 @@
                                 </div>
                             </td>
                             <td class="text-end">
-                                <span t-esc="o._get_line_cancelled_amount(l)"
+                                <span t-out="o._get_line_cancelled_amount(l)"
                                       t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
                             </td>
                             <td class="text-end">
-                                <span t-esc="abs(l.amount_residual) if o.state == 'posted' else 0"
+                                <span t-out="abs(l.amount_residual) if o.state == 'posted' else 0"
                                       t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
                             </td>
                         </tr>
@@ -91,7 +90,7 @@
                         <tr style="border-top: 2px solid #000;">
                             <th colspan="2" class="text-end" style="font-size: 1.15rem;">Total</th>
                             <th class="text-end" style="font-size: 1.15rem;">
-                                <span t-esc="sum(o._get_line_cancelled_amount(l) for l in o.to_pay_move_line_ids)"
+                                <span t-out="sum(o._get_line_cancelled_amount(l) for l in o.to_pay_move_line_ids)"
                                       t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
                             </th>
                             <th class="text-end" style="font-size: 1.15rem;">
@@ -132,7 +131,7 @@
                                     <ul class="mb-1 ps-3">
                                         <li t-foreach="p.l10n_latam_new_check_ids" t-as="ch">
                                             Nº <span t-field="ch.name"/>
-                                            <t t-if="ch.bank_id"> · <span t-field="ch.bank_id.name"/></t>
+                                            <t t-if="ch.bank_account_id.bank_name"> · <span t-out="ch.bank_account_id.bank_name"/></t>
                                             <t t-if="ch.is_echeq"> · echeq</t>
                                             <t t-if="ch.is_cpd"> · CPD</t>
                                             <t t-if="ch.payment_date"> · vto <span t-field="ch.payment_date"/></t>
@@ -149,7 +148,7 @@
                                     <ul class="mb-1 ps-3">
                                         <li t-foreach="p.l10n_latam_move_check_ids" t-as="ch">
                                             Nº <span t-field="ch.name"/>
-                                            <t t-if="ch.bank_id"> · <span t-field="ch.bank_id.name"/></t>
+                                            <t t-if="ch.bank_account_id.bank_name"> · <span t-out="ch.bank_account_id.bank_name"/></t>
                                             <t t-if="ch.payment_date"> · vto <span t-field="ch.payment_date"/></t>
                                             ·
                                             <span t-field="ch.amount"
@@ -170,8 +169,8 @@
                                 <!-- Transferencia bancaria: bank journal sin cheques ni tarjeta -->
                                 <t t-if="p.journal_id.type == 'bank' and not p.l10n_latam_new_check_ids and not p.l10n_latam_move_check_ids and not p.is_card_journal">
                                     <strong>Transferencia bancaria</strong>
-                                    <t t-if="p.journal_id.bank_id"> · <span t-field="p.journal_id.bank_id.name"/></t>
-                                    <t t-if="p.journal_id.bank_account_id.acc_number"> · cuenta <span t-field="p.journal_id.bank_account_id.acc_number"/></t>
+                                    <t t-if="p.journal_id.bank_account_id.bank_name"> · <span t-out="p.journal_id.bank_account_id.bank_name"/></t>
+                                    <t t-if="p.journal_id.bank_account_id.account_number"> · cuenta <span t-out="p.journal_id.bank_account_id.account_number"/></t>
                                 </t>
                                 <!-- Efectivo: cash journal sin cheques -->
                                 <t t-if="p.journal_id.type == 'cash'">
@@ -228,7 +227,7 @@
                         <tr style="border-top: 2px solid #000;">
                             <th colspan="3" class="text-end" style="font-size: 1.15rem;">Total entregado</th>
                             <th class="text-end" style="font-size: 1.15rem;">
-                                <span t-esc="o.payments_amount + o.withholdings_amount"
+                                <span t-out="o.payments_amount + o.withholdings_amount"
                                       t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
                             </th>
                         </tr>
@@ -240,7 +239,7 @@
                          t-attf-class="#{'text-danger' if o.net_to_cancel_amount &gt; 0 else 'text-success'}">
                         <strong t-if="o.net_to_cancel_amount &gt; 0">Neto a cancelar pendiente:</strong>
                         <strong t-else="">Sobrante / anticipo:</strong>
-                        <span t-esc="abs(o.net_to_cancel_amount)"
+                        <span t-out="abs(o.net_to_cancel_amount)"
                               t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
                     </div>
                 </div>

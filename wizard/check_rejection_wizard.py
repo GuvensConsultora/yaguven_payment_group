@@ -113,7 +113,8 @@ class L10nLatamCheckRejectionWizard(models.TransientModel):
         line = payment.move_id.line_ids.filtered(
             lambda l: (
                 l.account_id.account_type in ("asset_receivable", "liability_payable")
-                and l.partner_id == payment.partner_id
+                # 20: el asiento del pago lleva la empresa (commercial_partner_id)
+                and l.partner_id.commercial_partner_id == payment.partner_id.commercial_partner_id
             )
         )
         if not line:
@@ -258,22 +259,22 @@ class L10nLatamCheckRejectionWizard(models.TransientModel):
         return "".join(parts)
 
     def _get_blocked_journal_ids(self):
-        """IDs de diario excluidos de altas nuevas según la ir.rule vigente
+        """IDs de diario excluidos de altas nuevas según el acceso (ir.access, en 19 ir.rule) vigente
         de account.move con patrón `[('journal_id', 'not in', [...])]`.
 
         No se infiere por nombre (un diario histórico puede no tener "hist"
         ni "migra" en el nombre, p.ej. "Ventas Preimpreso") — se lee la
         regla real para no quedar desalineado si cambia la lista.
         """
-        rules = self.env["ir.rule"].sudo().search([
+        rules = self.env["ir.access"].sudo().search([
             ("model_id.model", "=", "account.move"),
-            ("domain_force", "like", "journal_id"),
-            ("domain_force", "like", "not in"),
+            ("domain", "like", "journal_id"),
+            ("domain", "like", "not in"),
         ])
         blocked = set()
         for rule in rules:
             try:
-                domain = ast.literal_eval(rule.domain_force)
+                domain = ast.literal_eval(rule.domain)
             except (ValueError, SyntaxError):
                 continue
             for leaf in domain:

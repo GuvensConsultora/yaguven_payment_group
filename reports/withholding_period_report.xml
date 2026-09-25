@@ -10,7 +10,6 @@
         <field name="model">sicore.export.wizard</field>
         <field name="report_type">qweb-pdf</field>
         <field name="report_name">yaguven_payment_group.report_sicore_listing</field>
-        <field name="report_file">yaguven_payment_group.report_sicore_listing</field>
         <field name="print_report_name">'Retenciones_%s' % object.period</field>
     </record>
 
@@ -28,8 +27,8 @@
                         <div style="text-align: center; margin: 8px 0 14px 0;">
                             <h2 style="margin: 0;">Retenciones del Período</h2>
                             <div style="font-size: 11px; color: #555; margin-top: 4px;">
-                                Del <span t-esc="wiz.date_from" t-options='{"widget": "date"}'/>
-                                al <span t-esc="wiz.date_to" t-options='{"widget": "date"}'/>
+                                Del <span t-out="wiz.date_from" t-options='{"widget": "date"}'/>
+                                al <span t-out="wiz.date_to" t-options='{"widget": "date"}'/>
                             </div>
                         </div>
 
@@ -45,7 +44,7 @@
                                 <td style="padding: 2px 6px;">
                                     <strong>Régimen:</strong>
                                     <span t-field="wiz.tax_id.name"/>
-                                    — código impuesto ARCA <span t-esc="wiz.cod_impuesto"/>
+                                    — código impuesto ARCA <span t-out="wiz.cod_impuesto"/>
                                 </td>
                             </tr>
                         </table>
@@ -65,16 +64,16 @@
                             <tbody>
                                 <t t-foreach="rows" t-as="r">
                                     <tr>
-                                        <td><span t-esc="r['date']" t-options='{"widget": "date"}'/></td>
-                                        <td><span t-esc="r['partner_name']"/></td>
-                                        <td><span t-esc="r['cuit']"/></td>
-                                        <td><span t-esc="r['withholding_number']"/></td>
-                                        <td><span t-esc="r['op_name']"/></td>
+                                        <td><span t-out="r['date']" t-options='{"widget": "date"}'/></td>
+                                        <td><span t-out="r['partner_name']"/></td>
+                                        <td><span t-out="r['cuit']"/></td>
+                                        <td><span t-out="r['withholding_number']"/></td>
+                                        <td><span t-out="r['op_name']"/></td>
                                         <td class="text-end">
-                                            <span t-esc="r['base_amount']" t-options='{"widget": "monetary", "display_currency": company.currency_id}'/>
+                                            <span t-out="r['base_amount']" t-options='{"widget": "monetary", "display_currency": company.currency_id}'/>
                                         </td>
                                         <td class="text-end">
-                                            <span t-esc="r['amount']" t-options='{"widget": "monetary", "display_currency": company.currency_id}'/>
+                                            <span t-out="r['amount']" t-options='{"widget": "monetary", "display_currency": company.currency_id}'/>
                                         </td>
                                     </tr>
                                     <t t-if="r['invoices']">
@@ -83,10 +82,10 @@
                                                 <em>Comprobantes asociados:</em>
                                                 <t t-foreach="r['invoices']" t-as="inv">
                                                     <span style="margin-left: 8px;">
-                                                        <span t-esc="inv['name']"/>
-                                                        (<span t-esc="inv['date']" t-options='{"widget": "date"}'/>) —
-                                                        Neto: <span t-esc="inv['untaxed']" t-options='{"widget": "monetary", "display_currency": company.currency_id}'/>
-                                                        — Total: <span t-esc="inv['total']" t-options='{"widget": "monetary", "display_currency": company.currency_id}'/>
+                                                        <span t-out="inv['name']"/>
+                                                        (<span t-out="inv['date']" t-options='{"widget": "date"}'/>) —
+                                                        Neto: <span t-out="inv['untaxed']" t-options='{"widget": "monetary", "display_currency": company.currency_id}'/>
+                                                        — Total: <span t-out="inv['total']" t-options='{"widget": "monetary", "display_currency": company.currency_id}'/>
                                                     </span>
                                                     <br/>
                                                 </t>
@@ -99,7 +98,7 @@
                                 <tr style="background-color: #DCE6F2; font-weight: bold;">
                                     <td colspan="6" class="text-end">TOTAL RETENIDO:</td>
                                     <td class="text-end">
-                                        <span t-esc="total_retenido" t-options='{"widget": "monetary", "display_currency": company.currency_id}'/>
+                                        <span t-out="total_retenido" t-options='{"widget": "monetary", "display_currency": company.currency_id}'/>
                                     </td>
                                 </tr>
                             </tfoot>

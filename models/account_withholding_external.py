@@ -20,11 +20,10 @@ class AccountWithholdingExternal(models.Model):
     _order = "date desc, id desc"
     _check_company_auto = True
 
-    _sql_constraints = [
-        ("uniq_company_ref",
-         "unique(company_id, ref)",
-         "Ya existe una retención externa con esta referencia de origen."),
-    ]
+    _uniq_company_ref = models.Constraint(
+        "unique(company_id, ref)",
+        "Ya existe una retención externa con esta referencia de origen.",
+    )
 
     company_id = fields.Many2one(
         "res.company",
@@ -46,7 +45,7 @@ class AccountWithholdingExternal(models.Model):
         string="Régimen",
         required=True,
         check_company=True,
-        domain="[('l10n_ar_withholding_payment_type', '=', 'supplier'),"
+        domain="[('is_withholding_tax', '=', True), ('type_tax_use', '=', 'purchase'),"
                " ('company_id', '=', company_id)]",
     )
     base_amount = fields.Monetary(

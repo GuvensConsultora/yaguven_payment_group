@@ -457,7 +457,8 @@ class AccountPaymentGroup(models.Model):
         return self.payment_ids.move_id.line_ids.filtered(
             lambda l: (
                 l.account_id.account_type in ("asset_receivable", "liability_payable")
-                and l.partner_id == self.partner_id
+                # 20: el asiento del pago lleva la empresa (commercial_partner_id), no el contacto
+                and l.partner_id.commercial_partner_id == self.partner_id.commercial_partner_id
                 and not l.reconciled
             )
         )

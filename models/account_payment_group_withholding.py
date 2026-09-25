@@ -18,12 +18,12 @@ class AccountPaymentGroupWithholding(models.Model):
     _description = "Retención AR aplicada a un recibo / orden de pago"
     _check_company_auto = True
 
-    _sql_constraints = [
-        ("uniq_group_tax",
-         "unique(payment_group_id, tax_id)",
-         "Ya existe una retención de este impuesto en el recibo / OP. "
-         "Editá la línea existente en lugar de cargarla otra vez."),
-    ]
+    # En 19 era _sql_constraints, que ya se ignoraba: la unicidad recién existe en la base desde 20.
+    _uniq_group_tax = models.Constraint(
+        "unique(payment_group_id, tax_id)",
+        "Ya existe una retención de este impuesto en el recibo / OP. "
+        "Editá la línea existente en lugar de cargarla otra vez.",
+    )
 
     @api.onchange("tax_id")
     def _onchange_tax_id_check_duplicate(self):
@@ -59,17 +59,20 @@ class AccountPaymentGroupWithholding(models.Model):
     company_id = fields.Many2one(related="payment_group_id.company_id", store=True)
     currency_id = fields.Many2one(related="payment_group_id.currency_id")
     partner_type = fields.Selection(related="payment_group_id.partner_type")
+    # Odoo 20: el tipo de pago de la retención (l10n_ar_withholding_payment_type) ya no existe;
+    # la retención sufrida es un impuesto de venta y la practicada uno de compra.
+    tax_type_use = fields.Char(compute="_compute_tax_type_use")
     name = fields.Char(string="Nro retención")
     tax_id = fields.Many2one(
         "account.tax",
         string="Régimen",
         required=True,
         check_company=True,
-        domain="[('l10n_ar_withholding_payment_type', '=', partner_type),"
+        domain="[('is_withholding_tax', '=', True), ('type_tax_use', '=', tax_type_use),"
                " ('company_id', '=', company_id)]",
     )
     withholding_sequence_id = fields.Many2one(
-        related="tax_id.l10n_ar_withholding_sequence_id"
+        related="tax_id.withholding_sequence_id"
     )
     base_amount = fields.Monetary(
         string="Monto base",
@@ -90,6 +93,11 @@ class AccountPaymentGroupWithholding(models.Model):
              "chatter al confirmar.",
     )
 
+    @api.depends("partner_type")
+    def _compute_tax_type_use(self):
+        for line in self:
+            line.tax_type_use = "sale" if line.partner_type == "customer" else "purchase"
+
     def _compute_expected_base_amount(self):
         """Base imponible esperada según parametrización (RG 830 art. 25 —
         neto sin IVA). Sólo se usa para la verificación en chatter; el
@@ -103,7 +111,7 @@ class AccountPaymentGroupWithholding(models.Model):
         group = self.payment_group_id
         if not group:
             return 0.0
-        if self.tax_id.l10n_ar_tax_type == "iibb_total":
+        if self.tax_id.l10n_ar_withholding_tax_type == "iibb_total":
             target = group.invoices_to_cancel_amount + group.advance_amount
             return target or group.payments_amount
         inv_lines = group.to_pay_move_line_ids.filtered(
@@ -143,14 +151,17 @@ class AccountPaymentGroupWithholding(models.Model):
         group = self.payment_group_id
 
         same_period_withholdings = 0.0
-        if self.tax_id.l10n_ar_tax_type in ("earnings", "earnings_scale"):
+        if self.tax_id.l10n_ar_withholding_tax_type in ("earnings", "earnings_scale"):
             to_date = group.payment_date or date.today()
             from_date = to_date + relativedelta(day=1)
             domain = [
                 ("company_id", "child_of", self.tax_id.company_id.id),
                 ("parent_state", "=", "posted"),
-                ("tax_line_id.l10n_ar_code", "=", self.tax_id.l10n_ar_code),
-                ("tax_line_id.l10n_ar_tax_type", "in",
+                # En 20 sólo Ganancias de compras conserva el código ARCA (l10n_ar_withholding
+                # limpia l10n_ar_code en el resto): del lado cliente se acumula por impuesto.
+                ("tax_line_id.l10n_ar_code", "=", self.tax_id.l10n_ar_code)
+                if self.tax_id.l10n_ar_code else ("tax_line_id", "=", self.tax_id.id),
+                ("tax_line_id.l10n_ar_withholding_tax_type", "in",
                  ["earnings", "earnings_scale"]),
                 ("partner_id", "=", group.partner_id.commercial_partner_id.id),
                 ("date", "<=", to_date), ("date", ">=", from_date),
@@ -175,31 +186,26 @@ class AccountPaymentGroupWithholding(models.Model):
             net_amount = self.base_amount
 
         net_amount = max(0, net_amount - self.tax_id.l10n_ar_non_taxable_amount)
-        taxes_res = self.tax_id.compute_all(
-            net_amount,
-            currency=group.currency_id,
-            quantity=1.0,
-            product=False,
-            partner=False,
-            is_refund=False,
-            rounding_method="round_per_line",
-        )
-        tax_amount = taxes_res["taxes"][0]["amount"]
-        tax_account_id = taxes_res["taxes"][0]["account_id"]
-        tax_repartition_line_id = taxes_res["taxes"][0]["tax_repartition_line_id"]
+        # Odoo 20: compute_all descarta los impuestos de retención (l10n_account_withholding_tax
+        # los filtra salvo pedido expreso) y los guarda con alícuota NEGATIVA. El importe se
+        # calcula acá, siempre positivo, que es como lo carga el cajero.
+        tax = self.tax_id
+        rep_line = tax.invoice_repartition_line_ids.filtered(
+            lambda r: r.repartition_type == "tax")[:1]
+        factor = (rep_line.factor_percent / 100.0) if rep_line else 1.0
+        if tax.amount_type == "fixed":
+            tax_amount = abs(tax.amount) * factor
+        else:
+            tax_amount = net_amount * abs(tax.amount) / 100.0 * factor
+        tax_amount = group.currency_id.round(tax_amount) if group.currency_id else tax_amount
+        tax_account_id = rep_line.account_id.id
+        tax_repartition_line_id = rep_line.id
 
-        if self.tax_id.l10n_ar_tax_type in ("earnings", "earnings_scale"):
-            if self.tax_id.l10n_ar_tax_type == "earnings_scale":
-                escala = self.env["l10n_ar.earnings.scale.line"].search([
-                    ("scale_id", "=", self.tax_id.l10n_ar_scale_id.id),
-                    ("excess_amount", "<=", net_amount),
-                    ("to_amount", ">", net_amount),
-                ], limit=1)
-                if escala:
-                    tax_amount = (
-                        (net_amount - escala.excess_amount)
-                        * escala.percentage / 100
-                    ) + escala.fixed_amount
+        if self.tax_id.l10n_ar_withholding_tax_type in ("earnings", "earnings_scale"):
+            if self.tax_id.l10n_ar_withholding_tax_type == "earnings_scale":
+                # 20: from_amount/fixed_amount ya no se guardan; la escala trae el cálculo.
+                tax_amount = self.tax_id.l10n_ar_scale_id._l10n_ar_get_tax_amount_from_bracket(
+                    net_amount)
             tax_amount -= same_period_withholdings
 
         if self.tax_id.l10n_ar_minimum_threshold > tax_amount:
@@ -326,8 +332,8 @@ class AccountPaymentGroupWithholding(models.Model):
 
     def _ensure_name(self):
         for w in self.filtered(lambda x: not x.name):
-            if w.tax_id.l10n_ar_withholding_sequence_id:
-                w.name = w.tax_id.l10n_ar_withholding_sequence_id.next_by_id()
+            if w.tax_id.withholding_sequence_id:
+                w.name = w.tax_id.withholding_sequence_id.next_by_id()
             else:
                 raise UserError(_(
                     "Cargá el número de retención para %s (la tax no tiene "
@@ -338,11 +344,11 @@ class AccountPaymentGroupWithholding(models.Model):
 
     def _is_ganancias(self):
         self.ensure_one()
-        return self.tax_id.l10n_ar_tax_type in ("earnings", "earnings_scale")
+        return self.tax_id.l10n_ar_withholding_tax_type in ("earnings", "earnings_scale")
 
     def _is_iibb(self):
         self.ensure_one()
-        return self.tax_id.l10n_ar_tax_type in ("iibb_untaxed", "iibb_total")
+        return self.tax_id.l10n_ar_withholding_tax_type in ("iibb_untaxed", "iibb_total")
 
     def get_withholding_type_label(self):
         self.ensure_one()
@@ -350,14 +356,14 @@ class AccountPaymentGroupWithholding(models.Model):
             return _("Impuesto a las Ganancias — RG 830")
         if self._is_iibb():
             return _("Ingresos Brutos")
-        if self.tax_id.l10n_ar_withholding_payment_type:
+        if self.tax_id.is_withholding_tax:
             return self.tax_id.name
         return self.tax_id.name or _("Retención")
 
     def get_alicuota_label(self):
         """Alícuota legible: % fijo o leyenda 'según escala'."""
         self.ensure_one()
-        if self.tax_id.l10n_ar_tax_type == "earnings_scale":
+        if self.tax_id.l10n_ar_withholding_tax_type == "earnings_scale":
             return _("Según escala (RG 830 anexo VIII)")
         # formatLang y no "{:.2f}": el separador decimal sale del idioma de
         # quien imprime (2,00 % en es_AR), igual que los importes del certificado.

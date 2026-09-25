@@ -191,7 +191,7 @@
                                                         <field name="name" string="Número"/>
                                                         <field name="is_echeq" string="Echeq" optional="show"/>
                                                         <field name="is_cpd" string="CPD" optional="show"/>
-                                                        <field name="bank_id"/>
+                                                        <field name="bank_account_id"/>
                                                         <field name="issuer_vat" string="CUIT emisor"
                                                                column_invisible="parent.payment_method_code == 'own_checks'"/>
                                                         <field name="issuer_postal_code" string="C.P. emisor"
@@ -218,7 +218,7 @@
                                                         <field name="name"/>
                                                         <field name="is_echeq" optional="show"/>
                                                         <field name="is_cpd" string="CPD" optional="show"/>
-                                                        <field name="bank_id"/>
+                                                        <field name="bank_account_id"/>
                                                         <field name="issuer_vat" string="CUIT emisor"/>
                                                         <field name="issuer_postal_code" string="C.P. emisor" optional="hide"/>
                                                         <field name="endorser_vat" string="CUIT endosante" optional="show"/>

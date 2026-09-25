@@ -12,11 +12,11 @@ Adaptado del módulo de Lupatini al modelo nativo de Camilleti:
 las retenciones son `account.payment.group.withholding` (no
 `account.payment` con tax_withholding_id como en OCA).
 """
-import base64
 from datetime import date
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
+from odoo.tools.binary import BinaryBytes  # 20: un Binary ya no acepta bytes en base64
 
 
 class SicoreExportWizard(models.TransientModel):
@@ -41,10 +41,10 @@ class SicoreExportWizard(models.TransientModel):
     tax_id = fields.Many2one(
         "account.tax",
         string="Régimen / Tax de retención",
-        domain="[('l10n_ar_withholding_payment_type', '=', 'supplier'),"
-               " ('l10n_ar_tax_type', 'in', ('earnings','earnings_scale'))]",
+        domain="[('is_withholding_tax', '=', True), ('type_tax_use', '=', 'purchase'),"
+               " ('l10n_ar_withholding_tax_type', 'in', ('earnings','earnings_scale'))]",
         required=True,
-        help="Tax cuyo `l10n_ar_withholding_payment_type=supplier` y "
+        help="Impuesto de retención de compras (practicada) y "
              "tipo earnings/earnings_scale. Para SICORE Ganancias.",
     )
     cod_impuesto = fields.Char(
@@ -325,11 +325,11 @@ class SicoreExportWizard(models.TransientModel):
         wths = self._get_withholdings()
 
         sujetos = self._build_sujetos_txt(wths)
-        self.file_sujetos = base64.b64encode(sujetos.encode("utf-8"))
+        self.file_sujetos = BinaryBytes(sujetos.encode("utf-8"))
         self.file_sujetos_name = "SICORE_sujetos_%s.txt" % self.period
 
         retenciones = self._build_retenciones_txt(wths)
-        self.file_txt = base64.b64encode(retenciones.encode("utf-8"))
+        self.file_txt = BinaryBytes(retenciones.encode("utf-8"))
         self.file_txt_name = "SICORE_retenciones_%s.txt" % self.period
 
         self.state = "done"

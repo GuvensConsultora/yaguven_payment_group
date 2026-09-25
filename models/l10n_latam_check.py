@@ -142,15 +142,18 @@ class L10nLatamCheck(models.Model):
                     name=chk.name or "—", delta=delta, tipo=tipo, limit=limit,
                 ))
 
-    @api.constrains("name", "bank_id", "is_echeq")
+    # Odoo 20: el cheque ya no tiene banco (res.bank desapareció); tiene la cuenta bancaria
+    # del librador (bank_account_id -> res.partner.bank) con el banco como texto (bank_name).
+    # La regla sigue siendo la misma: número único por banco.
+    @api.constrains("name", "bank_account_id", "is_echeq")
     def _check_unique_check(self):
         for chk in self:
-            if not chk.name or not chk.bank_id:
+            if not chk.name or not chk.bank_account_id.bank_name:
                 continue
             dup = self.search([
                 ("id", "!=", chk.id),
                 ("name", "=", chk.name),
-                ("bank_id", "=", chk.bank_id.id),
+                ("bank_account_id.bank_name", "=ilike", chk.bank_account_id.bank_name),
                 ("is_echeq", "=", chk.is_echeq),
                 ("company_id", "=", chk.company_id.id),
             ], limit=1)
@@ -192,5 +195,5 @@ class L10nLatamCheck(models.Model):
                     "Si ese pago es el mismo que estás cargando, no hace falta "
                     "cargarlo de nuevo: aplicalo desde la factura, en los pagos "
                     "pendientes de aplicar.",
-                    name=chk.name, bank=chk.bank_id.name, donde=donde,
+                    name=chk.name, bank=chk.bank_account_id.bank_name, donde=donde,
                 ))
