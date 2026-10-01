@@ -106,8 +106,10 @@
                                 </div>
                                 <field name="to_pay_move_line_ids" nolabel="1"
                                        readonly="state != 'draft'">
-                                    <list>
+                                    <!-- Del más vencido al próximo a vencer -->
+                                    <list default_order="date_maturity asc, id asc">
                                         <field name="date" string="Fecha"/>
+                                        <field name="date_maturity" string="Vencimiento"/>
                                         <field name="move_id" string="Comprobante"/>
                                         <field name="amount_residual" string="Residual"
                                                sum="Total"/>

@@ -204,7 +204,7 @@ class AccountPaymentGroup(models.Model):
             ("reconciled", "=", False),
             ("amount_residual", "!=", 0),
             ("move_id.move_type", "in", move_types),
-        ])
+        ], order="date_maturity asc, id asc")
 
     def action_load_all_pending(self):
         """Botón: imputa todos los comprobantes pendientes del partner."""
