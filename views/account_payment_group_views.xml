@@ -254,12 +254,15 @@
                                 </form>
                             </field>
                                 <div style="background-color: #FCE4EC; border-radius: 8px; padding: 12px; margin-top: 12px;">
-                                    <h5 class="mb-2" title="Retenciones IIBB / Ganancias practicadas a este proveedor. Se autocalculan al imputar los comprobantes según las condiciones SIRCAR cargadas para el partner.">
+                                    <h5 class="mb-2" title="Retenciones IIBB / Ganancias practicadas a este proveedor.">
                                         🧾 Retenciones
                                     </h5>
                                     <p class="text-muted small mb-2">
-                                        Se calculan automáticamente al tildar comprobantes. Si el partner no tiene condiciones SIRCAR cargadas, la lista queda vacía.
+                                        Después de tildar los comprobantes, «Calcular retenciones» carga las de Ganancias del proveedor con el acumulado del mes. Las de IIBB se cargan a mano.
                                     </p>
+                                    <div class="d-flex gap-2 mb-2">
+                                        <button name="action_compute_withholdings" type="object" string="🧮 Calcular retenciones" class="btn btn-secondary btn-sm" help="Carga base e importe de Ganancias según RG 830, sumando lo pagado al proveedor en el mes." invisible="state != 'draft' or partner_type != 'supplier' or not partner_id"/>
+                                    </div>
                                     <field name="withholding_ids" nolabel="1"
                                            readonly="state != 'draft'">
                                         <list editable="bottom">

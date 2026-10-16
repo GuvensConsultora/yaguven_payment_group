@@ -239,6 +239,48 @@ class AccountPaymentGroup(models.Model):
         for group in self:
             group.withholdings_amount = sum(group.withholding_ids.mapped("amount"))
 
+    def action_compute_withholdings(self):
+        """Botón: carga las retenciones de Ganancias de la OP con el cálculo
+        del sistema (RG 830, acumulado del mes, mínimo de retención).
+
+        Toma los regímenes asignados al proveedor (`l10n_ar.partner.tax`) y
+        por cada uno crea o actualiza la línea: base = la que el control de
+        confirmación espera (facturas tildadas sin IVA, o anticipo) e importe
+        = `_tax_compute_all_helper`. La línea se deja aunque dé $0: su base
+        tiene que entrar en el acumulado del mes para el pago siguiente.
+        IIBB queda afuera: se sigue cargando a mano.
+        """
+        for group in self:
+            if group.state != "draft" or group.partner_type != "supplier":
+                raise UserError(_(
+                    "Las retenciones se calculan sólo en órdenes de pago a "
+                    "proveedores en borrador."
+                ))
+            partner = group.partner_id.commercial_partner_id
+            taxes = self.env["l10n_ar.partner.tax"].search([
+                ("partner_id", "=", partner.id),
+                ("company_id", "=", group.company_id.id),
+            ]).tax_id.filtered(
+                lambda t: t.is_withholding_tax
+                and t.type_tax_use == "purchase"
+                and t.l10n_ar_withholding_tax_type in ("earnings", "earnings_scale")
+            )
+            if not taxes:
+                raise UserError(_(
+                    "%s no tiene régimen de Ganancias asignado: no hay "
+                    "retención que calcular."
+                ) % partner.display_name)
+            for tax in taxes:
+                line = group.withholding_ids.filtered(lambda w: w.tax_id == tax)[:1]
+                if not line:
+                    line = self.env["account.payment.group.withholding"].create({
+                        "payment_group_id": group.id,
+                        "tax_id": tax.id,
+                    })
+                line.base_amount = line._compute_expected_base_amount()
+                line.amount = line._tax_compute_all_helper()[0]
+        return True
+
     def _get_line_cancelled_amount(self, line):
         """Importe cancelado de `line` en este grupo.
 
