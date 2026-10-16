@@ -259,9 +259,10 @@ class AccountPaymentGroupWithholding(models.Model):
                 else abs(diff_base) < 0.01
             )
             estado = "OK" if (ok_amount and ok_base) else "REVISAR"
-            color = "#1e7e34" if estado == "OK" else "#b02a37"
+            # azul / naranja, nunca verde / rojo: el estado va además en texto
+            color = "#1f5fbf" if estado == "OK" else "#c75b00"
             sym = currency.symbol if currency else ""
-            fmt = lambda v: "{} {:,.2f}".format(sym, v)
+            fmt = lambda v: "{} {}".format(sym, formatLang(self.env, v, digits=2))
             ext_note = ""
             if w._is_ganancias():
                 to_date = group.payment_date or date.today()

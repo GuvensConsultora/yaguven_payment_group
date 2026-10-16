@@ -4,7 +4,7 @@ from odoo.exceptions import UserError, ValidationError
 
 class AccountPaymentGroup(models.Model):
     _name = "account.payment.group"
-    _description = "Recibo / Orden de pago — agrupa varios account.payment contra varias facturas"
+    _description = "Recibo / Orden de pago"
     _inherit = ["mail.thread", "mail.activity.mixin"]
     _order = "payment_date desc, id desc"
     _check_company_auto = True
@@ -17,6 +17,7 @@ class AccountPaymentGroup(models.Model):
     )
     company_id = fields.Many2one(
         "res.company",
+        string="Compañía",
         required=True,
         default=lambda self: self.env.company,
     )
@@ -36,16 +37,19 @@ class AccountPaymentGroup(models.Model):
     )
     partner_id = fields.Many2one(
         "res.partner",
+        string="Contacto",
         required=True,
         check_company=True,
     )
     payment_date = fields.Date(
+        string="Fecha",
         required=True,
         default=fields.Date.context_today,
     )
     communication = fields.Char(string="Concepto")
     state = fields.Selection(
         [("draft", "Borrador"), ("posted", "Confirmado"), ("cancel", "Cancelado")],
+        string="Estado",
         required=True,
         default="draft",
         tracking=True,
