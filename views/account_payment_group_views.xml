@@ -176,6 +176,7 @@
                                         <!-- invisibles necesarios para condiciones -->
                                         <field name="payment_method_code" invisible="1"/>
                                         <field name="is_card_journal" invisible="1"/>
+                                        <field name="is_transfer_journal" invisible="1"/>
                                         <field name="currency_id" invisible="1"/>
                                         <field name="state" invisible="1"/>
                                         <field name="partner_id" invisible="1"/>
@@ -183,7 +184,7 @@
                                         <field name="payment_type" invisible="1"/>
                                         <field name="company_id" invisible="1"/>
                                         <!-- Cheques propios o cheques de tercero NUEVOS recibidos -->
-                                        <notebook invisible="payment_method_code not in ('own_checks', 'new_third_party_checks') and not is_card_journal and payment_method_code not in ('in_third_party_checks', 'out_third_party_checks', 'return_third_party_checks')">
+                                        <notebook invisible="payment_method_code not in ('own_checks', 'new_third_party_checks') and not is_card_journal and not (is_transfer_journal and payment_type == 'inbound') and payment_method_code not in ('in_third_party_checks', 'out_third_party_checks', 'return_third_party_checks')">
                                             <page string="Cheques"
                                                   invisible="payment_method_code not in ('own_checks', 'new_third_party_checks')">
                                                 <field name="l10n_latam_new_check_ids" nolabel="1">
@@ -242,6 +243,16 @@
                                                         <field name="card_authorization_code"/>
                                                         <field name="card_installments"/>
                                                         <field name="card_holder_name"/>
+                                                    </group>
+                                                </group>
+                                            </page>
+                                            <page string="Datos de transferencia"
+                                                  invisible="not is_transfer_journal or payment_type != 'inbound'">
+                                                <group>
+                                                    <group>
+                                                        <field name="payment_reference" string="Nº de operación"
+                                                               required="is_transfer_journal and payment_type == 'inbound'"
+                                                               placeholder="El número del comprobante de la transferencia"/>
                                                     </group>
                                                 </group>
                                             </page>

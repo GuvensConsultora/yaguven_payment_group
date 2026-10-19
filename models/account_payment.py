@@ -88,6 +88,19 @@ class AccountPayment(models.Model):
     card_installments = fields.Integer(string="Cuotas", default=1)
     card_holder_name = fields.Char(string="Titular")
 
+    # Transferencia: el Nº de operación va en el `payment_reference` nativo
+    # (Odoo lo usa para sugerir el apareo con el extracto). Sin él, una
+    # transferencia que el cliente dijo haber hecho y nunca entró al banco
+    # no se distingue de una que sí entró.
+    is_transfer_journal = fields.Boolean(compute="_compute_is_transfer_journal")
+
+    @api.depends("journal_id.type", "journal_id.is_card_journal")
+    def _compute_is_transfer_journal(self):
+        for pay in self:
+            pay.is_transfer_journal = (
+                pay.journal_id.type == "bank" and not pay.journal_id.is_card_journal
+            )
+
     def action_open_move(self):
         self.ensure_one()
         if not self.move_id:
