@@ -13,6 +13,10 @@ from odoo.exceptions import UserError
 from odoo.tools.misc import formatLang, html_escape
 
 
+MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+         "agosto", "septiembre", "octubre", "noviembre", "diciembre")
+
+
 class AccountPaymentGroupWithholding(models.Model):
     _name = "account.payment.group.withholding"
     _description = "Retención AR aplicada a un recibo / orden de pago"
@@ -108,12 +112,28 @@ class AccountPaymentGroupWithholding(models.Model):
         payments_amount si advance todavía no fue cargado.
         """
         self.ensure_one()
+        return self._expected_base_detail()["base"]
+
+    def _expected_base_detail(self):
+        """De dónde sale la base esperada, para mostrarlo en el chatter.
+
+        Devuelve un dict con `base` (lo que usa la verificación) y las
+        piezas de la cuenta: facturas, pagado, sin IVA, total y anticipo.
+        """
+        self.ensure_one()
         group = self.payment_group_id
+        detail = {
+            "base": 0.0, "invoices": self.env["account.move"],
+            "to_cancel": 0.0, "untaxed": 0.0, "total": 0.0,
+            "invoice_base": 0.0, "advance": 0.0, "fallback_payments": False,
+        }
         if not group:
-            return 0.0
+            return detail
         if self.tax_id.l10n_ar_withholding_tax_type == "iibb_total":
             target = group.invoices_to_cancel_amount + group.advance_amount
-            return target or group.payments_amount
+            detail["base"] = target or group.payments_amount
+            detail["fallback_payments"] = not target
+            return detail
         inv_lines = group.to_pay_move_line_ids.filtered(
             lambda l: l.move_id.move_type in (
                 "out_invoice", "in_invoice", "out_refund", "in_refund"
@@ -126,12 +146,33 @@ class AccountPaymentGroupWithholding(models.Model):
             if total else 0.0
         )
         advance_base = group.advance_amount
+        detail.update(
+            invoices=inv_lines.move_id, to_cancel=group.invoices_to_cancel_amount,
+            untaxed=untaxed, total=total, invoice_base=invoice_base,
+            advance=advance_base,
+        )
         if invoice_base or advance_base:
-            return invoice_base + advance_base
-        return group.payments_amount
+            detail["base"] = invoice_base + advance_base
+        else:
+            detail["base"] = group.payments_amount
+            detail["fallback_payments"] = True
+        return detail
 
     def _tax_compute_all_helper(self):
         """Calcula la retención del período aplicando RG 830.
+
+        El cálculo vive en `_tax_compute_breakdown`, que además devuelve
+        cada paso para el chatter: así el botón «Calcular retenciones», el
+        asiento y la nota de verificación no pueden dar números distintos.
+
+        Devuelve (amount, account_id, tax_repartition_line_id).
+        """
+        self.ensure_one()
+        b = self._tax_compute_breakdown()
+        return b["amount"], b["account_id"], b["repartition_line_id"]
+
+    def _tax_compute_breakdown(self):
+        """Cálculo RG 830 paso a paso.
 
         Acumulado mensual: una sola query sobre AML con `tax_line_id`
         del mismo régimen y partner en el mes calendario, leyendo
@@ -144,52 +185,67 @@ class AccountPaymentGroupWithholding(models.Model):
         sistema del mismo período (`account.withholding.external`): sin
         eso, durante una convivencia de sistemas el segundo pago del mes
         se retiene de más.
-
-        Devuelve (amount, account_id, tax_repartition_line_id).
         """
         self.ensure_one()
         group = self.payment_group_id
+        tax = self.tax_id
+        is_earnings = tax.l10n_ar_withholding_tax_type in ("earnings", "earnings_scale")
+        b = {
+            "is_earnings": is_earnings, "from_date": False, "to_date": False,
+            "base": self.base_amount or 0.0, "prev_lines": self.env["account.move.line"],
+            "prev_external": self.env["account.withholding.external"],
+            "prev_base": 0.0, "prev_withholdings": 0.0,
+        }
 
         same_period_withholdings = 0.0
-        if self.tax_id.l10n_ar_withholding_tax_type in ("earnings", "earnings_scale"):
+        if is_earnings:
             to_date = group.payment_date or date.today()
             from_date = to_date + relativedelta(day=1)
             domain = [
-                ("company_id", "child_of", self.tax_id.company_id.id),
+                ("company_id", "child_of", tax.company_id.id),
                 ("parent_state", "=", "posted"),
                 # En 20 sólo Ganancias de compras conserva el código ARCA (l10n_ar_withholding
                 # limpia l10n_ar_code en el resto): del lado cliente se acumula por impuesto.
-                ("tax_line_id.l10n_ar_code", "=", self.tax_id.l10n_ar_code)
-                if self.tax_id.l10n_ar_code else ("tax_line_id", "=", self.tax_id.id),
+                ("tax_line_id.l10n_ar_code", "=", tax.l10n_ar_code)
+                if tax.l10n_ar_code else ("tax_line_id", "=", tax.id),
                 ("tax_line_id.l10n_ar_withholding_tax_type", "in",
                  ["earnings", "earnings_scale"]),
                 ("partner_id", "=", group.partner_id.commercial_partner_id.id),
                 ("date", "<=", to_date), ("date", ">=", from_date),
             ]
-            prev_lines = self.env["account.move.line"].sudo().search(domain)
+            prev_lines = self.env["account.move.line"].sudo().search(
+                domain, order="date, id")
             same_period_withholdings = sum(
                 abs(l.balance) for l in prev_lines
             )
             same_period_base = sum(
                 abs(l.tax_base_amount) for l in prev_lines
             )
-            ext_withholdings, ext_base = self.env[
-                "account.withholding.external"
-            ]._get_same_period_totals(
-                self.tax_id.company_id, group.partner_id, self.tax_id,
-                from_date, to_date,
+            external = self.env["account.withholding.external"]
+            ext_records = external._get_same_period_records(
+                tax.company_id, group.partner_id, tax, from_date, to_date,
+            )
+            ext_withholdings, ext_base = external._get_same_period_totals(
+                tax.company_id, group.partner_id, tax, from_date, to_date,
             )
             same_period_withholdings += ext_withholdings
             same_period_base += ext_base
             net_amount = self.base_amount + same_period_base
+            b.update(
+                from_date=from_date, to_date=to_date, prev_lines=prev_lines,
+                prev_external=ext_records, prev_base=same_period_base,
+                prev_withholdings=same_period_withholdings,
+            )
         else:
             net_amount = self.base_amount
+        b["accumulated"] = net_amount
+        b["non_taxable"] = tax.l10n_ar_non_taxable_amount
 
-        net_amount = max(0, net_amount - self.tax_id.l10n_ar_non_taxable_amount)
+        net_amount = max(0, net_amount - tax.l10n_ar_non_taxable_amount)
+        b["subject"] = net_amount
         # Odoo 20: compute_all descarta los impuestos de retención (l10n_account_withholding_tax
         # los filtra salvo pedido expreso) y los guarda con alícuota NEGATIVA. El importe se
         # calcula acá, siempre positivo, que es como lo carga el cajero.
-        tax = self.tax_id
         rep_line = tax.invoice_repartition_line_ids.filtered(
             lambda r: r.repartition_type == "tax")[:1]
         factor = (rep_line.factor_percent / 100.0) if rep_line else 1.0
@@ -198,23 +254,31 @@ class AccountPaymentGroupWithholding(models.Model):
         else:
             tax_amount = net_amount * abs(tax.amount) / 100.0 * factor
         tax_amount = group.currency_id.round(tax_amount) if group.currency_id else tax_amount
-        tax_account_id = rep_line.account_id.id
-        tax_repartition_line_id = rep_line.id
+        b.update(rate=abs(tax.amount), factor=factor, amount_type=tax.amount_type,
+                 account_id=rep_line.account_id.id, repartition_line_id=rep_line.id)
 
-        if self.tax_id.l10n_ar_withholding_tax_type in ("earnings", "earnings_scale"):
-            if self.tax_id.l10n_ar_withholding_tax_type == "earnings_scale":
+        if is_earnings:
+            if tax.l10n_ar_withholding_tax_type == "earnings_scale":
                 # 20: from_amount/fixed_amount ya no se guardan; la escala trae el cálculo.
-                tax_amount = self.tax_id.l10n_ar_scale_id._l10n_ar_get_tax_amount_from_bracket(
+                tax_amount = tax.l10n_ar_scale_id._l10n_ar_get_tax_amount_from_bracket(
                     net_amount)
+            b["on_accumulated"] = tax_amount
             tax_amount -= same_period_withholdings
+        else:
+            b["on_accumulated"] = tax_amount
+        b["before_minimum"] = tax_amount
+        b["minimum"] = tax.l10n_ar_minimum_threshold
 
-        if self.tax_id.l10n_ar_minimum_threshold > tax_amount:
+        if tax.l10n_ar_minimum_threshold > tax_amount:
             tax_amount = 0.0
-        return tax_amount, tax_account_id, tax_repartition_line_id
+        b["amount"] = tax_amount
+        return b
 
     def _post_calculation_check_to_chatter(self):
         """Verifica el monto cargado contra el cálculo paramétrico y deja
-        constancia en el chatter del payment_group.
+        constancia en el chatter del payment_group, con el cálculo paso a
+        paso: base, pagos anteriores del mes, mínimo no sujeto, alícuota o
+        escala, retenido antes y mínimo de retención.
 
         Aplica a clientes (lo que ya nos retuvieron, comparado contra la
         fórmula del régimen aplicada a la base que el cajero declara del
@@ -229,7 +293,7 @@ class AccountPaymentGroupWithholding(models.Model):
             if not group or not w.tax_id:
                 continue
             try:
-                expected_amount, _account, _rep = w._tax_compute_all_helper()
+                b = w._tax_compute_breakdown()
             except Exception as exc:
                 group.message_post(
                     body=Markup(
@@ -244,92 +308,153 @@ class AccountPaymentGroupWithholding(models.Model):
                     subtype_xmlid="mail.mt_note",
                 )
                 continue
-            loaded_amount = w.amount or 0.0
-            expected_base = w._compute_expected_base_amount()
-            loaded_base = w.base_amount or 0.0
-            currency = group.currency_id
-            diff_amount = loaded_amount - expected_amount
-            diff_base = loaded_base - expected_base
-            ok_amount = (
-                currency.is_zero(diff_amount) if currency
-                else abs(diff_amount) < 0.01
-            )
-            ok_base = (
-                currency.is_zero(diff_base) if currency
-                else abs(diff_base) < 0.01
-            )
-            estado = "OK" if (ok_amount and ok_base) else "REVISAR"
-            # azul / naranja, nunca verde / rojo: el estado va además en texto
-            color = "#1f5fbf" if estado == "OK" else "#c75b00"
-            sym = currency.symbol if currency else ""
-            fmt = lambda v: "{} {}".format(sym, formatLang(self.env, v, digits=2))
-            ext_note = ""
-            if w._is_ganancias():
-                to_date = group.payment_date or date.today()
-                ext_withholdings, ext_base = self.env[
-                    "account.withholding.external"
-                ]._get_same_period_totals(
-                    w.tax_id.company_id, group.partner_id, w.tax_id,
-                    to_date + relativedelta(day=1), to_date,
-                )
-                if ext_withholdings or ext_base:
-                    ext_note = (
-                        "<p style=\"font-size:smaller;color:#666;\">El "
-                        "acumulado del mes incluye retenciones practicadas "
-                        "en otro sistema: base %s, retenido %s.</p>"
-                    ) % (
-                        html_escape(fmt(ext_base)),
-                        html_escape(fmt(ext_withholdings)),
-                    )
-            partner_label = (
-                _("retención que nos aplican")
-                if group.partner_type == "customer"
-                else _("retención que aplicamos al proveedor")
-            )
-            body = (
-                "<p><strong>Verificación de %s — %s</strong></p>"
-                "<p>Régimen: %s</p>"
-                "<table style=\"border-collapse:collapse;\">"
-                "<tr><td style=\"padding:2px 8px;\"></td>"
-                "<td style=\"padding:2px 8px;text-align:right;\"><strong>Cargado</strong></td>"
-                "<td style=\"padding:2px 8px;text-align:right;\"><strong>Esperado</strong></td>"
-                "<td style=\"padding:2px 8px;text-align:right;\"><strong>Diferencia</strong></td></tr>"
-                "<tr><td style=\"padding:2px 8px;\">Base</td>"
-                "<td style=\"padding:2px 8px;text-align:right;\">%s</td>"
-                "<td style=\"padding:2px 8px;text-align:right;\">%s</td>"
-                "<td style=\"padding:2px 8px;text-align:right;\">%s</td></tr>"
-                "<tr><td style=\"padding:2px 8px;\">Monto retenido</td>"
-                "<td style=\"padding:2px 8px;text-align:right;\">%s</td>"
-                "<td style=\"padding:2px 8px;text-align:right;\">%s</td>"
-                "<td style=\"padding:2px 8px;text-align:right;\">%s</td></tr>"
-                "</table>"
-                "<p style=\"color:%s;\"><strong>%s</strong></p>"
-                "<p style=\"font-size:smaller;color:#666;\">Cálculo "
-                "paramétrico según RG 830 / régimen y acumulado del "
-                "período sobre los registros del sistema.</p>"
-                "%s"
-            ) % (
-                html_escape(partner_label),
-                html_escape(w.tax_id.name or ""),
-                html_escape(w.get_regimen_label()),
-                html_escape(fmt(loaded_base)),
-                html_escape(fmt(expected_base)),
-                html_escape(fmt(diff_base)),
-                html_escape(fmt(loaded_amount)),
-                html_escape(fmt(expected_amount)),
-                html_escape(fmt(diff_amount)),
-                color,
-                html_escape(estado),
-                ext_note,
-            )
             group.message_post(
-                body=Markup(body),
+                body=w._render_calculation_note(b),
                 subject=_(
                     "Verificación de retención — %s"
                 ) % (w.tax_id.name or ""),
                 message_type="comment",
                 subtype_xmlid="mail.mt_note",
             )
+
+    def _render_calculation_note(self, b):
+        """HTML de la nota: el cálculo renglón por renglón y debajo la
+        comparación cargado / esperado. Estado con texto y símbolo, en
+        azul / naranja, nunca sólo color ni verde / rojo."""
+        self.ensure_one()
+        group = self.payment_group_id
+        currency = group.currency_id
+        esc = html_escape
+        num = lambda v: formatLang(self.env, v, digits=2)
+        pct = lambda v: "{} %".format(formatLang(self.env, v, digits=2))
+        td = "padding:2px 8px;"
+        tdr = td + "text-align:right;white-space:nowrap;"
+        grey = "font-size:smaller;color:#666;"
+        rows = []
+
+        def row(n, label, value, note="", strong=False):
+            val = num(value) if isinstance(value, (int, float)) else (value or "")
+            cell = "<strong>%s</strong>" % esc(val) if strong else esc(val)
+            # str: Markup + str escaparía la nota, que ya viene escapada
+            label_html = str(esc(label))
+            if note:
+                label_html += "<br/><span style=\"%s\">%s</span>" % (grey, note)
+            rows.append(
+                "<tr><td style=\"%s\">%s</td><td style=\"%s\">%s</td>"
+                "<td style=\"%s\">%s</td></tr>" % (
+                    td + "vertical-align:top;", esc(n), td, label_html, tdr, cell)
+            )
+
+        # 1 · base de este pago, y de dónde sale la esperada
+        d = self._expected_base_detail()
+        notes = []
+        if d["invoices"] and d["total"]:
+            notes.append(esc("Según %s: pagado %s × sin IVA %s / total %s = %s" % (
+                ", ".join(d["invoices"].mapped("name")), num(d["to_cancel"]),
+                num(d["untaxed"]), num(d["total"]), num(d["invoice_base"]))))
+        if d["advance"]:
+            notes.append(esc("Anticipo: %s" % num(d["advance"])))
+        if d["fallback_payments"]:
+            notes.append(esc("Sin facturas ni anticipo: se toma el total pagado"))
+        row("1", _("Base de este pago (cargada)"), b["base"], "<br/>".join(notes))
+
+        n = 1
+        if b["is_earnings"]:
+            # 2 · pagos anteriores del mes, uno por renglón
+            prev = []
+            for l in b["prev_lines"]:
+                pay = l.payment_id
+                op = pay.payment_group_id.name if pay and "payment_group_id" in pay._fields \
+                    and pay.payment_group_id else l.move_id.name
+                prev.append("%s · %s · base %s · retenido %s" % (
+                    l.date.strftime("%d/%m"), op, num(abs(l.tax_base_amount)),
+                    num(abs(l.balance))))
+            for e in b["prev_external"]:
+                prev.append("%s · %s (otro sistema) · base %s · retenido %s" % (
+                    e.date.strftime("%d/%m"), e.ref, num(abs(e.base_amount)),
+                    num(abs(e.amount))))
+            row("2", _("Pagos anteriores del mes (bases)"), b["prev_base"],
+                "<br/>".join(esc(p) for p in prev) or esc(_("— ninguno —")))
+            row("3", _("Acumulado del mes (1 + 2)"), b["accumulated"])
+            n = 3
+        n += 1
+        row(str(n), _("Menos mínimo no sujeto"), -b["non_taxable"])
+        n += 1
+        row(str(n), _("Sujeto a retención"), b["subject"])
+        n += 1
+        ref_subject = n - 1
+        if self.tax_id.l10n_ar_withholding_tax_type == "earnings_scale":
+            calc_label = _("Retención sobre el acumulado (según escala)")
+        elif b["amount_type"] == "fixed":
+            calc_label = _("Retención fija del régimen")
+        else:
+            calc_label = _("Retención sobre el %s (%s × %s)") % (
+                _("acumulado") if b["is_earnings"] else _("sujeto"),
+                ref_subject, pct(b["rate"] * b["factor"]))
+        row(str(n), calc_label, b["on_accumulated"])
+        ref_calc = n
+        if b["is_earnings"]:
+            n += 1
+            row(str(n), _("Menos retenido antes en el mes"), -b["prev_withholdings"])
+            n += 1
+            row(str(n), _("Retención de este pago (%s − %s)") % (ref_calc, n - 1),
+                b["before_minimum"])
+        n += 1
+        if b["minimum"] > b["before_minimum"]:
+            min_note = _("%s no supera el mínimo de %s: no se retiene") % (
+                num(b["before_minimum"]), num(b["minimum"]))
+        else:
+            min_note = _("%s supera el mínimo de %s: se retiene") % (
+                num(b["before_minimum"]), num(b["minimum"]))
+        row(str(n), _("Mínimo de retención"), b["amount"], esc(min_note), strong=True)
+
+        # comparación cargado / esperado
+        expected_amount = b["amount"]
+        expected_base = d["base"]
+        loaded_amount = self.amount or 0.0
+        loaded_base = self.base_amount or 0.0
+        diff_amount = loaded_amount - expected_amount
+        diff_base = loaded_base - expected_base
+        is_zero = (currency.is_zero if currency else (lambda v: abs(v) < 0.01))
+        ok = is_zero(diff_amount) and is_zero(diff_base)
+        if ok:
+            color, estado = "#1f5fbf", _("● OK — lo cargado coincide con el cálculo")
+        else:
+            color, estado = "#c75b00", _("▲ REVISAR — lo cargado no coincide con el cálculo")
+
+        if b["is_earnings"]:
+            mes = "%s %s" % (MESES[b["to_date"].month - 1], b["to_date"].year)
+        else:
+            mes = group.payment_date and group.payment_date.strftime("%d/%m/%Y") or ""
+        partner_label = (
+            _("Retención que nos aplican")
+            if group.partner_type == "customer"
+            else _("Retención que aplicamos al proveedor")
+        )
+        cmp_rows = "".join(
+            "<tr><td style=\"%s\">%s</td><td style=\"%s\">%s</td>"
+            "<td style=\"%s\">%s</td><td style=\"%s\">%s</td></tr>" % (
+                td, esc(lbl), tdr, esc(num(a)), tdr, esc(num(e)), tdr, esc(num(a - e)))
+            for lbl, a, e in ((_("Base"), loaded_base, expected_base),
+                              (_("Retenido"), loaded_amount, expected_amount))
+        )
+        return Markup(
+            "<p><strong>%s — %s</strong><br/>%s · %s</p>"
+            "<table style=\"border-collapse:collapse;\">%s</table>"
+            "<p></p>"
+            "<table style=\"border-collapse:collapse;\">"
+            "<tr><td style=\"%s\"></td><td style=\"%s\"><strong>%s</strong></td>"
+            "<td style=\"%s\"><strong>%s</strong></td><td style=\"%s\"><strong>%s</strong></td></tr>"
+            "%s</table>"
+            "<p style=\"color:%s;\"><strong>%s</strong></p>"
+        ) % (
+            esc(partner_label), esc(self.get_regimen_label()),
+            esc(_("Período: %s") % mes) if mes else "",
+            esc(group.partner_id.commercial_partner_id.name or ""),
+            Markup("".join(rows)),
+            td, tdr, esc(_("Cargado")), tdr, esc(_("Esperado")), tdr, esc(_("Diferencia")),
+            Markup(cmp_rows), color, esc(estado),
+        )
 
     def _ensure_name(self):
         for w in self.filtered(lambda x: not x.name):

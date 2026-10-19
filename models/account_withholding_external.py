@@ -68,13 +68,20 @@ class AccountWithholdingExternal(models.Model):
         Mismo criterio que el acumulado sobre asientos: compañía (y sus
         hijas), código de régimen, proveedor comercial y rango de fechas.
         """
-        records = self.sudo().search([
-            ("company_id", "child_of", company.id),
-            ("tax_id.l10n_ar_code", "=", tax.l10n_ar_code),
-            ("partner_id", "=", partner.commercial_partner_id.id),
-            ("date", "<=", to_date), ("date", ">=", from_date),
-        ])
+        records = self._get_same_period_records(
+            company, partner, tax, from_date, to_date)
         return (
             sum(abs(r.amount) for r in records),
             sum(abs(r.base_amount) for r in records),
         )
+
+    @api.model
+    def _get_same_period_records(self, company, partner, tax, from_date, to_date):
+        """Los registros que suma `_get_same_period_totals`, para listarlos
+        uno por uno en el desglose del chatter."""
+        return self.sudo().search([
+            ("company_id", "child_of", company.id),
+            ("tax_id.l10n_ar_code", "=", tax.l10n_ar_code),
+            ("partner_id", "=", partner.commercial_partner_id.id),
+            ("date", "<=", to_date), ("date", ">=", from_date),
+        ], order="date, id")
