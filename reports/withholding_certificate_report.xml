@@ -21,6 +21,11 @@
 
             <div class="page" style="font-family: Arial, sans-serif; font-size: 10px; color: #2c2c2c;">
 
+                <div t-if="o.cancel_date"
+                     style="border: 2px solid #c75b00; color: #c75b00; text-align: center; font-size: 14px; font-weight: bold; padding: 4px; margin-bottom: 6px;">
+                    ▲ ANULADO el <span t-out="o.cancel_date.strftime('%d/%m/%Y')"/>
+                </div>
+
                 <!-- ENCABEZADO -->
                 <div style="text-align: center; margin: 6px 0 10px 0;">
                     <div style="font-size: 15px; font-weight: bold; letter-spacing: 1px;">

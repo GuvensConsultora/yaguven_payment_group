@@ -1,3 +1,5 @@
+from markupsafe import Markup
+
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
@@ -724,11 +726,26 @@ class AccountPaymentGroup(models.Model):
             })
         return True
 
+    def action_request_cancel(self):
+        """Botón «Cancelar»: abre el asistente que avisa qué implica, sobre
+        todo si la OP tiene retenciones de un mes anterior. `action_cancel`
+        sigue siendo la API directa (la usa el rechazo de cheques)."""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Cancelar %s") % (self.name or ""),
+            "res_model": "account.payment.group.cancel.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_payment_group_id": self.id},
+        }
+
     def action_cancel(self):
         for group in self:
             if group.state == "cancel":
                 continue
             if group.state == "posted":
+                group._annul_withholdings()
                 # Desconciliar las líneas matcheadas (payment ↔ factura)
                 # para que la factura vuelva a quedar pendiente.
                 if group.matched_move_line_ids:
@@ -769,6 +786,23 @@ class AccountPaymentGroup(models.Model):
                 "matched_move_line_ids": [(5, 0, 0)],
             })
         return True
+
+    def _annul_withholdings(self):
+        """Las retenciones practicadas no se borran al cancelar: quedan
+        anuladas con fecha, conservan su número de certificado y dejan en el
+        chatter qué corresponde hacer según el mes (RG 2233)."""
+        self.ensure_one()
+        today = fields.Date.context_today(self)
+        for w in self.withholding_ids.filtered(lambda x: x._is_practiced()):
+            _other_month, notice = w._cancel_notice(today)
+            w.cancel_date = today
+            self.message_post(
+                body=Markup("<p><strong>%s</strong></p><p>%s</p>") % (
+                    _("Retención anulada — %s") % (w.tax_id.name or ""), notice),
+                subject=_("Retención anulada"),
+                message_type="comment",
+                subtype_xmlid="mail.mt_note",
+            )
 
     def action_draft(self):
         # PCGA / RT FACPCE: una vez cancelado, el comprobante generó un

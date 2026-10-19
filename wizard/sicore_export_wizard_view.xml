@@ -26,6 +26,9 @@
                             <field name="file_txt_name" invisible="1"/>
                         </group>
                     </group>
+                    <div invisible="not annulled_notice" class="alert alert-warning" role="alert">
+                        <field name="annulled_notice" nolabel="1" readonly="1"/>
+                    </div>
                     <field name="state" invisible="1"/>
                 </sheet>
                 <footer>

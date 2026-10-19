@@ -16,6 +16,7 @@ from datetime import date
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
+from odoo.tools.misc import formatLang
 from odoo.tools.binary import BinaryBytes  # 20: un Binary ya no acepta bytes en base64
 
 
@@ -63,6 +64,43 @@ class SicoreExportWizard(models.TransientModel):
         [("draft", "Borrador"), ("done", "Generado")],
         default="draft",
     )
+
+    annulled_notice = fields.Text(
+        string="Retenciones anuladas después del período",
+        compute="_compute_annulled_notice",
+    )
+
+    @api.depends("date_from", "date_to", "tax_id")
+    def _compute_annulled_notice(self):
+        """Retenciones del período cuya OP se canceló después de su cierre:
+        no salen en el TXT, y si el de ese mes ya se presentó con ellas, este
+        va como rectificativa (RG 2233, Anexo IV, punto V)."""
+        for rec in self:
+            rec.annulled_notice = False
+            if not (rec.date_from and rec.date_to and rec.tax_id):
+                continue
+            wths = self.env["account.payment.group.withholding"].search([
+                ("tax_id", "=", rec.tax_id.id),
+                ("payment_group_id.state", "=", "cancel"),
+                ("payment_group_id.payment_date", ">=", rec.date_from),
+                ("payment_group_id.payment_date", "<=", rec.date_to),
+                ("cancel_date", ">", rec.date_to),
+            ], order="payment_group_id")
+            if not wths:
+                continue
+            lines = [_(
+                "▲ %s retenciones de este período se anularon después de su "
+                "cierre y no salen en el TXT. Si el de este período ya se "
+                "presentó con ellas, este va como DJ rectificativa:"
+            ) % len(wths)]
+            for w in wths:
+                lines.append("· %s · %s · %s · cert. %s · %s · anulada el %s" % (
+                    w.payment_group_id.payment_date.strftime("%d/%m/%Y"),
+                    w.payment_group_id.name or "",
+                    w.payment_group_id.partner_id.commercial_partner_id.name or "",
+                    w.name or "—", formatLang(self.env, w.amount, digits=2),
+                    w.cancel_date.strftime("%d/%m/%Y")))
+            rec.annulled_notice = "\n".join(lines)
 
     @api.depends("date_from")
     def _compute_period(self):

@@ -97,6 +97,15 @@ class AccountPaymentGroupWithholding(models.Model):
              "chatter al confirmar.",
     )
 
+    cancel_date = fields.Date(
+        string="Anulada el",
+        readonly=True,
+        copy=False,
+        help="Fecha en que se canceló la OP. La retención no se borra: conserva "
+             "su número de certificado y deja de contar en el acumulado y en el "
+             "SICORE de su mes.",
+    )
+
     @api.depends("partner_type")
     def _compute_tax_type_use(self):
         for line in self:
@@ -174,12 +183,12 @@ class AccountPaymentGroupWithholding(models.Model):
     def _tax_compute_breakdown(self):
         """Cálculo RG 830 paso a paso.
 
-        Acumulado mensual: una sola query sobre AML con `tax_line_id`
-        del mismo régimen y partner en el mes calendario, leyendo
-        balance (= retenciones previas) y `tax_base_amount` (= base
-        previa). No iteramos `tax_ids` porque nuestro asiento no genera
-        líneas dummy de base — la base vive como atributo de la línea
-        de retención (patrón estilo ADHOC).
+        Acumulado mensual: las retenciones del mismo régimen y proveedor
+        de OP **confirmadas** del mes calendario — el mismo criterio que el
+        export SICORE. No se lee el asiento: al cancelar una OP la reversión
+        cae con la fecha del día y en valor absoluto se sumaba dos veces (y
+        en el mes de la cancelación, si era otro). Una OP cancelada deja de
+        contar en su propio mes, como en el TXT.
 
         Al acumulado se le suman las retenciones practicadas en otro
         sistema del mismo período (`account.withholding.external`): sin
@@ -192,7 +201,7 @@ class AccountPaymentGroupWithholding(models.Model):
         is_earnings = tax.l10n_ar_withholding_tax_type in ("earnings", "earnings_scale")
         b = {
             "is_earnings": is_earnings, "from_date": False, "to_date": False,
-            "base": self.base_amount or 0.0, "prev_lines": self.env["account.move.line"],
+            "base": self.base_amount or 0.0, "prev_records": self.browse(),
             "prev_external": self.env["account.withholding.external"],
             "prev_base": 0.0, "prev_withholdings": 0.0,
         }
@@ -203,23 +212,26 @@ class AccountPaymentGroupWithholding(models.Model):
             from_date = to_date + relativedelta(day=1)
             domain = [
                 ("company_id", "child_of", tax.company_id.id),
-                ("parent_state", "=", "posted"),
+                ("payment_group_id.state", "=", "posted"),
                 # En 20 sólo Ganancias de compras conserva el código ARCA (l10n_ar_withholding
                 # limpia l10n_ar_code en el resto): del lado cliente se acumula por impuesto.
-                ("tax_line_id.l10n_ar_code", "=", tax.l10n_ar_code)
-                if tax.l10n_ar_code else ("tax_line_id", "=", tax.id),
-                ("tax_line_id.l10n_ar_withholding_tax_type", "in",
+                ("tax_id.l10n_ar_code", "=", tax.l10n_ar_code)
+                if tax.l10n_ar_code else ("tax_id", "=", tax.id),
+                ("tax_id.l10n_ar_withholding_tax_type", "in",
                  ["earnings", "earnings_scale"]),
-                ("partner_id", "=", group.partner_id.commercial_partner_id.id),
-                ("date", "<=", to_date), ("date", ">=", from_date),
+                ("payment_group_id.partner_id.commercial_partner_id", "=",
+                 group.partner_id.commercial_partner_id.id),
+                ("payment_group_id.payment_date", "<=", to_date),
+                ("payment_group_id.payment_date", ">=", from_date),
             ]
-            prev_lines = self.env["account.move.line"].sudo().search(
-                domain, order="date, id")
+            prev_records = self.sudo().search(domain).filtered(
+                lambda r: r.payment_group_id != group._origin
+            ).sorted(lambda r: (r.payment_group_id.payment_date, r.id))
             same_period_withholdings = sum(
-                abs(l.balance) for l in prev_lines
+                abs(r.amount) for r in prev_records
             )
             same_period_base = sum(
-                abs(l.tax_base_amount) for l in prev_lines
+                abs(r.base_amount) for r in prev_records
             )
             external = self.env["account.withholding.external"]
             ext_records = external._get_same_period_records(
@@ -232,7 +244,7 @@ class AccountPaymentGroupWithholding(models.Model):
             same_period_base += ext_base
             net_amount = self.base_amount + same_period_base
             b.update(
-                from_date=from_date, to_date=to_date, prev_lines=prev_lines,
+                from_date=from_date, to_date=to_date, prev_records=prev_records,
                 prev_external=ext_records, prev_base=same_period_base,
                 prev_withholdings=same_period_withholdings,
             )
@@ -362,13 +374,11 @@ class AccountPaymentGroupWithholding(models.Model):
         if b["is_earnings"]:
             # 2 · pagos anteriores del mes, uno por renglón
             prev = []
-            for l in b["prev_lines"]:
-                pay = l.payment_id
-                op = pay.payment_group_id.name if pay and "payment_group_id" in pay._fields \
-                    and pay.payment_group_id else l.move_id.name
-                prev.append("%s · %s · base %s · retenido %s" % (
-                    l.date.strftime("%d/%m"), op, num(abs(l.tax_base_amount)),
-                    num(abs(l.balance))))
+            for r in b["prev_records"]:
+                prev.append("%s · %s · cert. %s · base %s · retenido %s" % (
+                    r.payment_group_id.payment_date.strftime("%d/%m"),
+                    r.payment_group_id.name or "", r.name or "—",
+                    num(abs(r.base_amount)), num(abs(r.amount))))
             for e in b["prev_external"]:
                 prev.append("%s · %s (otro sistema) · base %s · retenido %s" % (
                     e.date.strftime("%d/%m"), e.ref, num(abs(e.base_amount)),
@@ -456,6 +466,33 @@ class AccountPaymentGroupWithholding(models.Model):
             Markup(cmp_rows), color, esc(estado),
         )
 
+    def _is_practiced(self):
+        """Retención efectivamente practicada: tiene importe o número."""
+        self.ensure_one()
+        return bool(self.amount or self.name)
+
+    def _cancel_notice(self, cancel_date):
+        """Qué implica anular esta retención, según su mes y el de la
+        cancelación (RG 2233: la corrección es del período original)."""
+        self.ensure_one()
+        group = self.payment_group_id
+        ret_date = group.payment_date
+        mes = "%s %s" % (MESES[ret_date.month - 1], ret_date.year)
+        amount = "{} {}".format(group.currency_id.symbol or "",
+                                formatLang(self.env, self.amount, digits=2))
+        cert = self.name or "—"
+        if (ret_date.year, ret_date.month) == (cancel_date.year, cancel_date.month):
+            return False, _(
+                "Retención %(cert)s por %(amount)s anulada dentro del período: "
+                "no va al SICORE de %(mes)s."
+            ) % {"cert": cert, "amount": amount, "mes": mes}
+        return True, _(
+            "La retención %(cert)s por %(amount)s es de %(mes)s y se anula en "
+            "otro mes. Corresponde: DJ SICORE rectificativa de %(mes)s, "
+            "devolverle %(amount)s al proveedor (art. 6 RG 2233) y emitirle el "
+            "certificado rectificado (RG 2233, Anexo IV, punto III)."
+        ) % {"cert": cert, "amount": amount, "mes": mes}
+
     def _ensure_name(self):
         for w in self.filtered(lambda x: not x.name):
             if w.tax_id.withholding_sequence_id:
@@ -533,7 +570,7 @@ class AccountPaymentGroupWithholding(models.Model):
 
     def action_print_certificate(self):
         self.ensure_one()
-        if self.payment_group_id.state != "posted":
+        if self.payment_group_id.state != "posted" and not self.cancel_date:
             raise UserError(_(
                 "El certificado de retención sólo se emite una vez "
                 "confirmado el recibo / orden de pago."

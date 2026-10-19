@@ -8,6 +8,7 @@ access_account_payment_group_withholding_manager,account.payment.group.withholdi
 access_account_withholding_external_user,account.withholding.external user,account.withholding.external,account.group_account_invoice,r,
 access_account_withholding_external_manager,account.withholding.external manager,account.withholding.external,account.group_account_manager,crud,
 access_sicore_export_wizard_user,sicore.export.wizard user,sicore.export.wizard,account.group_account_invoice,crud,
+access_payment_group_cancel_wizard_user,account.payment.group.cancel.wizard user,account.payment.group.cancel.wizard,account.group_account_invoice,crud,
 access_l10n_latam_check_rejection_wizard_user,l10n_latam.check.rejection.wizard user,l10n_latam.check.rejection.wizard,account.group_account_invoice,crud,
 payment_group_comp_rule,Payment Group multi-company,account.payment.group,,crud,"['|', ('company_id', 'in', company_ids), ('company_id', '=', False)]"
 payment_group_book_comp_rule,Payment Group Book multi-company,account.payment.group.book,,crud,"['|', ('company_id', 'in', company_ids), ('company_id', '=', False)]"

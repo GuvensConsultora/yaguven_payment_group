@@ -9,9 +9,8 @@
                 <header>
                     <button name="action_post" type="object" string="Confirmar"
                             class="oe_highlight" invisible="state != 'draft'"/>
-                    <button name="action_cancel" type="object" string="Cancelar"
-                            invisible="state == 'cancel'"
-                            confirm="Esto generará un asiento de reversión y desconciliará los comprobantes. ¿Continuar?"/>
+                    <button name="action_request_cancel" type="object" string="Cancelar"
+                            invisible="state == 'cancel'"/>
                     <button name="action_print_recibo" type="object"
                             string="Imprimir" icon="print" class="oe_highlight"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,posted"/>
@@ -270,11 +269,12 @@
                                             <field name="name" string="Nº retención"/>
                                             <field name="base_amount" string="Base"/>
                                             <field name="amount" sum="Total"/>
+                                            <field name="cancel_date" optional="show"/>
                                             <button name="action_print_certificate"
                                                     type="object"
                                                     string="Certificado"
                                                     icon="picture_as_pdf"
-                                                    invisible="parent.state != 'posted'"/>
+                                                    invisible="parent.state != 'posted' and not cancel_date"/>
                                             <field name="currency_id" column_invisible="1"/>
                                             <field name="company_id" column_invisible="1"/>
                                             <field name="partner_type" column_invisible="1"/>
