@@ -131,12 +131,20 @@ class L10nLatamCheck(models.Model):
         for chk in self:
             if not chk.name or not chk.bank_id:
                 continue
+            # Un cheque propio y uno de tercero pueden compartir banco y número
+            # sin ser el mismo cheque: los libran cuentas distintas. Son dos
+            # universos separados y el control de unicidad va dentro de cada
+            # uno. Caso 2026-10-20 (Arauco): al cargar la cobranza de un cheque
+            # de un cliente, la validación lo chocaba contra un cheque NUESTRO
+            # entregado en una orden de pago, y no dejaba registrar el cobro.
+            propio = chk.payment_method_code == "own_checks"
             dup = self.search([
                 ("id", "!=", chk.id),
                 ("name", "=", chk.name),
                 ("bank_id", "=", chk.bank_id.id),
                 ("is_echeq", "=", chk.is_echeq),
                 ("company_id", "=", chk.company_id.id),
+                ("payment_method_code", "=" if propio else "!=", "own_checks"),
             ], limit=1)
             if dup:
                 # El id interno del cheque no le sirve a nadie para ubicarlo:
@@ -170,11 +178,13 @@ class L10nLatamCheck(models.Model):
                 else:
                     donde = _("Figura cargado pero sin pago asociado.")
                 raise ValidationError(_(
-                    "Ya existe un cheque con número %(name)s del banco "
-                    "%(bank)s. No se permiten duplicados — cada cheque debe "
-                    "tener número único por banco.\n\n%(donde)s\n\n"
+                    "Ya existe un cheque %(clase)s con número %(name)s del "
+                    "banco %(bank)s. No se permiten duplicados — cada cheque "
+                    "debe tener número único por banco dentro de su clase."
+                    "\n\n%(donde)s\n\n"
                     "Si ese pago es el mismo que estás cargando, no hace falta "
                     "cargarlo de nuevo: aplicalo desde la factura, en los pagos "
                     "pendientes de aplicar.",
+                    clase=_("propio") if propio else _("de tercero"),
                     name=chk.name, bank=chk.bank_id.name, donde=donde,
                 ))
