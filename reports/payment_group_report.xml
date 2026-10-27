@@ -187,11 +187,13 @@
                                       t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
                             </td>
                         </tr>
-                        <!-- Retenciones como filas adicionales: el partner las
-                             "recibe" como menor cash (las depositamos al fisco). -->
+                        <!-- Retenciones como filas adicionales. En una OP las practicamos
+                             nosotros (las depositamos al fisco); en un recibo las practicó
+                             el cliente y nos entrega su certificado: retención sufrida. -->
                         <tr t-foreach="o.withholding_ids" t-as="w">
                             <td>
-                                <em>Retención</em>
+                                <em t-if="o.payment_type == 'inbound'">Retención sufrida</em>
+                                <em t-else="">Retención</em>
                             </td>
                             <td><span t-field="w.tax_id.name"/></td>
                             <td>
@@ -274,8 +276,10 @@
             <t t-foreach="docs" t-as="o">
                 <!-- Página 1: el recibo / OP -->
                 <t t-call="yaguven_payment_group.report_payment_group_document"/>
-                <!-- Páginas siguientes: 1 certificado por cada retención -->
-                <t t-foreach="o.withholding_ids" t-as="wh">
+                <!-- Páginas siguientes: 1 certificado por cada retención, sólo en la OP.
+                     En un recibo de cobro el agente de retención es el cliente: el
+                     certificado lo emite él, no nosotros. -->
+                <t t-foreach="o.withholding_ids if o.payment_type == 'outbound' else []" t-as="wh">
                     <t t-set="o" t-value="wh"/>
                     <t t-call="yaguven_payment_group.report_withholding_certificate_document"/>
                 </t>
