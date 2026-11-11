@@ -198,7 +198,20 @@ class L10nLatamCheck(models.Model):
                 ("is_echeq", "=", chk.is_echeq),
                 ("company_id", "=", chk.company_id.id),
                 ("payment_method_code", "=" if propio else "!=", "own_checks"),
-            ], limit=1)
+            ])
+            # Un cheque del MISMO recibo no es un duplicado: al volver a
+            # guardar el borrador, el formulario puede crear la línea nueva del
+            # cheque antes de borrar la anterior, y el control chocaba contra
+            # el propio recibo. Caso 2026-11-11 (Arauco, Lorenzo Automotores):
+            # el e-cheq 4562 existía una sola vez y no dejaba guardar. La carga
+            # repetida dentro de un mismo recibo se controla al confirmarlo
+            # (account.payment.group._check_cheques_repetidos_en_recibo).
+            grupo_propio = chk.payment_id.payment_group_id
+            dup = dup.filtered(
+                lambda d: not (d.payment_id and (
+                    d.payment_id == chk.payment_id
+                    or (grupo_propio
+                        and d.payment_id.payment_group_id == grupo_propio))))[:1]
             if dup:
                 # El id interno del cheque no le sirve a nadie para ubicarlo:
                 # hay que decir en QUÉ orden de pago / recibo está usado, que es

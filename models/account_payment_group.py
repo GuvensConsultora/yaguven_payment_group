@@ -605,6 +605,24 @@ class AccountPaymentGroup(models.Model):
 
         target._generate_journal_entry(line_ids=line_ids)
 
+    def _check_cheques_repetidos_en_recibo(self):
+        """El control de unicidad del cheque no mira su propio recibo (ver
+        l10n_latam.check._check_unique_check): acá se frena el caso de un
+        mismo cheque cargado dos veces dentro del recibo."""
+        for group in self:
+            vistos = {}
+            for chk in group.payment_ids.l10n_latam_new_check_ids:
+                if not chk.name or not chk.bank_id:
+                    continue
+                clave = (chk.name, chk.bank_id.id, chk.is_echeq,
+                         chk.payment_method_code == "own_checks")
+                if clave in vistos:
+                    raise UserError(_(
+                        "El cheque %(name)s del banco %(bank)s está cargado "
+                        "dos veces en este recibo. Dejá una sola línea.",
+                        name=chk.name, bank=chk.bank_id.name))
+                vistos[clave] = chk
+
     def action_post(self):
         for group in self:
             if group.state != "draft":
@@ -632,6 +650,7 @@ class AccountPaymentGroup(models.Model):
                     if pay.move_id and pay.move_id.state == "draft":
                         pay.move_id.date = group.payment_date
 
+            group._check_cheques_repetidos_en_recibo()
             group._check_anticipo_balance()
             group._apply_withholdings_to_target_payment()
             group.withholding_ids._post_calculation_check_to_chatter()
