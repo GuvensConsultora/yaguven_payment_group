@@ -63,7 +63,7 @@ class L10nLatamCheckCashExchangeWizard(models.TransientModel):
         "account.journal",
         string="Caja donde entra el efectivo",
         required=True,
-        domain="[('type', '=', 'cash'), ('company_id', '=', company_id)]",
+        domain="[('id', 'in', allowed_journal_ids)]",
         default=lambda self: self._default_cash_journal(),
     )
     date = fields.Date(
@@ -88,6 +88,35 @@ class L10nLatamCheckCashExchangeWizard(models.TransientModel):
         ], limit=1)
         return session.cash_register_id.journal_ids.filtered(
             lambda j: j.type == "cash")[:1]
+
+    allowed_journal_ids = fields.Many2many(
+        "account.journal",
+        compute="_compute_allowed_journal_ids",
+    )
+
+    @api.model
+    def _direct_cash_methods(self, journal):
+        """Métodos de entrada de `journal` que suman el efectivo en el acto.
+
+        Sin cuenta de pendientes propia, Odoo 19 usa la cuenta del diario
+        (medido 2026-11-11: los cobros de Caja Central con «Caja Central
+        directo» van a 1.1.1.01.002), así que también cuentan. Los de cheques
+        se excluyen. Primero el que nombra la cuenta de la caja explícita.
+        """
+        journal = journal.sudo()
+        cuenta = journal.default_account_id
+        lines = journal.inbound_payment_method_line_ids.filtered(
+            lambda m: "check" not in (m.code or "")
+            and m.payment_account_id in (cuenta, m.payment_account_id.browse()))
+        return lines.sorted(lambda m: m.payment_account_id != cuenta)
+
+    @api.depends("company_id")
+    def _compute_allowed_journal_ids(self):
+        journals = self.env["account.journal"].search([("type", "=", "cash")])
+        for wiz in self:
+            wiz.allowed_journal_ids = journals.filtered(
+                lambda j: j.company_id == wiz.company_id
+                and wiz._direct_cash_methods(j))
 
     # ------------------------------------------------------------------
     # Validaciones
@@ -126,10 +155,9 @@ class L10nLatamCheckCashExchangeWizard(models.TransientModel):
         Igual que en las devoluciones a clientes: el método cuya cuenta de
         pendientes ES la cuenta de la caja. Otro dejaría el cobro «en proceso».
         """
-        cuenta_caja = self.journal_id.sudo().default_account_id
-        method = self.journal_id.sudo().inbound_payment_method_line_ids.filtered(
-            lambda m: m.payment_account_id == cuenta_caja)[:1]
+        method = self._direct_cash_methods(self.journal_id)[:1]
         if not method:
+            cuenta_caja = self.journal_id.sudo().default_account_id
             raise UserError(_(
                 "La caja «%(caja)s» no tiene un método de entrada que sume el "
                 "efectivo en el acto (cuenta de pendientes = %(cuenta)s).",
