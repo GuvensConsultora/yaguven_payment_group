@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_l10n_latam_check_cash_exchange_wizard_form" model="ir.ui.view">
+        <field name="name">l10n_latam.check.cash.exchange.wizard.form</field>
+        <field name="model">l10n_latam.check.cash.exchange.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Canje por efectivo">
+                <p class="text-muted">
+                    El cliente se lleva el cheque y deja el mismo importe en
+                    efectivo. El recibo donde entró el cheque no se modifica.
+                </p>
+                <group>
+                    <group>
+                        <field name="check_id" readonly="1"/>
+                        <field name="partner_id" readonly="1"/>
+                        <field name="origin_group_id" readonly="1"/>
+                        <field name="currency_id" invisible="1"/>
+                        <field name="company_id" invisible="1"/>
+                        <field name="amount" readonly="1"/>
+                    </group>
+                    <group>
+                        <field name="journal_id" options="{'no_create': True}"/>
+                        <field name="date"/>
+                    </group>
+                </group>
+                <footer>
+                    <button string="Confirmar canje"
+                            name="action_confirm"
+                            type="object"
+                            class="btn-primary"/>
+                    <button string="Cancelar" special="cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>

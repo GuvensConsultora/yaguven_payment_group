@@ -36,8 +36,17 @@
                         string="Cheque rechazado"
                         icon="fa-ban"
                         invisible="rejected"/>
+                <button type="object"
+                        name="action_cash_exchange"
+                        string="Canje por efectivo"
+                        icon="fa-money"
+                        invisible="rejected or cash_exchange_group_id or not current_journal_id or payment_method_code != 'new_third_party_checks'"/>
             </xpath>
             <field name="name" position="after">
+                <field name="current_journal_id" invisible="1"/>
+                <field name="payment_method_code" invisible="1"/>
+                <field name="cash_exchange_group_id" invisible="not cash_exchange_group_id"/>
+                <field name="cash_exchange_payment_id" invisible="not cash_exchange_payment_id"/>
                 <field name="rejected"/>
                 <field name="rejection_date" invisible="not rejected"/>
                 <field name="rejection_reason" invisible="not rejected"/>

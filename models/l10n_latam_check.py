@@ -71,6 +71,41 @@ class L10nLatamCheck(models.Model):
              "cobrarlos.",
     )
 
+    cash_exchange_group_id = fields.Many2one(
+        "account.payment.group",
+        string="Canjeado por efectivo en",
+        readonly=True,
+        copy=False,
+        help="Recibo del efectivo con que el cliente reemplazó este cheque "
+             "antes de que se depositara.",
+    )
+    cash_exchange_payment_id = fields.Many2one(
+        "account.payment",
+        string="Devolución del cheque",
+        readonly=True,
+        copy=False,
+    )
+
+    def action_cash_exchange(self):
+        """Abre el canje del cheque por efectivo (ver el wizard)."""
+        self.ensure_one()
+        if self.rejected or self.cash_exchange_group_id or not self.current_journal_id:
+            raise ValidationError(_(
+                "El cheque %s no está en cartera: no se puede canjear.",
+                self.name or "—",
+            ))
+        if not self.payment_id or self.payment_id.payment_type != "inbound":
+            raise ValidationError(_(
+                "Sólo se canjea un cheque recibido de un cliente."))
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Canje por efectivo"),
+            "res_model": "l10n_latam.check.cash.exchange.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_check_id": self.id},
+        }
+
     def action_reject_check(self):
         self.ensure_one()
         if self.rejected:
@@ -82,6 +117,24 @@ class L10nLatamCheck(models.Model):
             raise ValidationError(_(
                 "Solo se puede marcar como rechazado un cheque recibido "
                 "de un cliente (cobro), no un cheque propio entregado."
+            ))
+        # El rechazo trabaja por medio de pago: si el recibo tiene uno solo,
+        # lo anula entero. Cuando ese medio de pago agrupa varios cheques,
+        # anular el recibo tira abajo también los cheques que no rebotaron.
+        # Caso 2026-11-11 (Morales, RC/2026/001555: 3 cheques en un pago).
+        otros = self.payment_id.l10n_latam_new_check_ids - self
+        if otros:
+            raise ValidationError(_(
+                "El cheque %(cheque)s entró junto con otros %(n)s cheques "
+                "(%(otros)s) en el mismo cobro de %(recibo)s. Marcarlo como "
+                "rechazado desde acá anularía el cobro completo, incluidos "
+                "los cheques que no rebotaron.\n\n"
+                "Avisá a administración para registrar este rechazo.",
+                cheque=self.name or "—",
+                n=len(otros),
+                otros=", ".join(otros.mapped("name")),
+                recibo=self.payment_id.payment_group_id.display_name
+                or self.payment_id.display_name,
             ))
         return {
             "type": "ir.actions.act_window",
