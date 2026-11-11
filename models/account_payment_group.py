@@ -622,6 +622,28 @@ class AccountPaymentGroup(models.Model):
                         "dos veces en este recibo. Dejá una sola línea.",
                         name=chk.name, bank=chk.bank_id.name))
                 vistos[clave] = chk
+                # Contra cheques de OTROS recibos ya confirmados: el control
+                # al cargar ignora los borradores, así que acá se cierra.
+                propio = chk.payment_method_code == "own_checks"
+                otro = self.env["l10n_latam.check"].search([
+                    ("id", "!=", chk.id),
+                    ("name", "=", chk.name),
+                    ("bank_id", "=", chk.bank_id.id),
+                    ("is_echeq", "=", chk.is_echeq),
+                    ("company_id", "=", chk.company_id.id),
+                    ("payment_method_code", "=" if propio else "!=",
+                     "own_checks"),
+                    ("payment_id.state", "not in", ("draft", "canceled")),
+                    ("payment_id.payment_group_id", "!=", group.id),
+                ], limit=1)
+                if otro:
+                    raise UserError(_(
+                        "El cheque %(name)s del banco %(bank)s ya está en "
+                        "%(donde)s, confirmado. Si es el mismo cobro, aplicalo "
+                        "desde la factura en los pagos pendientes de aplicar.",
+                        name=chk.name, bank=chk.bank_id.name,
+                        donde=(otro.payment_id.payment_group_id.display_name
+                               or otro.payment_id.display_name)))
 
     def action_post(self):
         for group in self:

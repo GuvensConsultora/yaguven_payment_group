@@ -206,10 +206,16 @@ class L10nLatamCheck(models.Model):
             # el e-cheq 4562 existía una sola vez y no dejaba guardar. La carga
             # repetida dentro de un mismo recibo se controla al confirmarlo
             # (account.payment.group._check_cheques_repetidos_en_recibo).
+            # Tampoco choca contra un cheque cuyo pago sigue en BORRADOR: un
+            # borrador no movió plata, y con el filtro anterior el caso de
+            # Lorenzo siguió frenado (16:10, mismo mensaje). El cruce contra
+            # cheques de otros recibos se hace al confirmar
+            # (account.payment.group._check_cheques_repetidos_en_recibo).
             grupo_propio = chk.payment_id.payment_group_id
             dup = dup.filtered(
                 lambda d: not (d.payment_id and (
-                    d.payment_id == chk.payment_id
+                    d.payment_id.state == "draft"
+                    or d.payment_id == chk.payment_id
                     or (grupo_propio
                         and d.payment_id.payment_group_id == grupo_propio))))[:1]
             if dup:
