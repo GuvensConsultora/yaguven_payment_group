@@ -128,6 +128,14 @@ class AccountPaymentGroup(models.Model):
              "la que se calculan las retenciones que se carguen como medios "
              "de pago.",
     )
+    partial_payment = fields.Boolean(
+        string="Pago parcial",
+        copy=False,
+        help="Tildalo cuando el cliente pagó de menos a propósito y la "
+             "factura tiene que quedar con saldo. Sólo hace falta si el "
+             "sistema frenó el recibo porque lo que falta parece una "
+             "retención sin cargar.",
+    )
     partner_balance_amount = fields.Monetary(
         compute="_compute_partner_balance_amount",
         string="Saldo del tercero",
@@ -472,42 +480,118 @@ class AccountPaymentGroup(models.Model):
         )
 
     def _check_anticipo_balance(self):
-        """Si hay retenciones, validar que lo que se cancela cuadre con
-        lo que se entrega al partner.
+        """Controla que lo cobrado/pagado cuadre con lo que se cancela.
 
-        Bruto cancelado = invoices_to_cancel_amount + advance_amount
-        Neto entregado  = payments_amount + withholdings_amount
+        Bruto = facturas a cancelar + anticipo; neto = medios + retenciones.
 
-        RG 830 calcula la retención sobre el bruto. Si los dos lados no
-        coinciden, o la base de la retención no refleja la obligación
-        real, o el usuario olvidó ajustar el anticipo o los medios de
-        pago. Cubre los tres casos: sólo facturas con retención, sólo
-        anticipo con retención, mixto facturas + anticipo + retención.
+        - Sobra plata (neto > bruto) con retenciones: frena y pide cargar el
+          sobrante en «Anticipo sin factura» (RG 830 retiene sobre el bruto).
+        - Hay anticipo y falta plata: frena (el anticipo es más que el sobrante).
+        - Falta plata en un recibo de CLIENTE: frena sólo si lo que falta
+          coincide con una o dos retenciones típicas (retención olvidada), y
+          la nombra. Si no coincide, o si está tildado «Pago parcial», publica
+          y la factura queda con saldo. Caso 2026-11-11, Lorenzo Automotores:
+          faltaban IIBB 3 % + Ganancias 2 % s/excedente; caso 2026-11-13: se
+          pidió que no frene los pagos parciales de verdad.
+        - Falta plata en una ORDEN DE PAGO con retenciones: frena (sin cambios).
         """
         self.ensure_one()
-        if not self.withholding_ids:
-            return
+        cur = self.currency_id
         bruto = self.invoices_to_cancel_amount + self.advance_amount
         neto = self.payments_amount + self.withholdings_amount
         diff = bruto - neto
-        if not self.currency_id.is_zero(diff):
+        if cur.is_zero(diff):
+            return
+        fmt = lambda v: "{:,.2f}".format(v).replace(",", "X").replace(".", ",").replace("X", ".")
+        if self.partner_type != "customer":
+            # Órdenes de pago: mismo comportamiento que antes de 19.0.3.38.0.
+            if self.withholding_ids:
+                raise UserError(_(
+                    "La orden de pago no cuadra: diferencia $ %(d)s "
+                    "(facturas %(inv)s + anticipo %(adv)s contra medios %(pay)s "
+                    "+ retenciones %(wth)s).\n\n"
+                    "Ajustá el anticipo, los medios de pago o las retenciones.",
+                    d=fmt(diff), inv=fmt(self.invoices_to_cancel_amount),
+                    adv=fmt(self.advance_amount), pay=fmt(self.payments_amount),
+                    wth=fmt(self.withholdings_amount)))
+            return
+        if diff < 0:
+            if not self.withholding_ids:
+                return
             raise UserError(_(
-                "Comprobante descuadrado.\n"
-                "Bruto a cancelar (facturas + anticipo) : %(bruto)s\n"
-                "  - Facturas a cancelar               : %(inv)s\n"
-                "  - Anticipo sin factura              : %(adv)s\n"
-                "Entregado al partner (cash + retenc.)  : %(neto)s\n"
-                "  - Medios de pago (neto)             : %(pay)s\n"
-                "  - Retenciones                       : %(wth)s\n"
-                "Diferencia                            : %(diff)s\n\n"
-                "El bruto debe igualar al neto. Ajustá el anticipo o los "
-                "medios de pago para que cuadre — RG 830 calcula la "
-                "retención sobre el bruto, no sobre el cash neto.",
-                bruto=bruto, inv=self.invoices_to_cancel_amount,
-                adv=self.advance_amount, neto=neto,
-                pay=self.payments_amount, wth=self.withholdings_amount,
-                diff=diff,
-            ))
+                "Sobran $ %(s)s sobre lo que se cancela.\n\n"
+                "Cargalos en «Anticipo sin factura» y el «Neto a cancelar» "
+                "queda en 0.", s=fmt(-diff)))
+        if self.advance_amount:
+            raise UserError(_(
+                "Falta $ %(f)s: el anticipo cargado es mayor a lo que sobra.\n\n"
+                "Bajá o borrá el «Anticipo sin factura».", f=fmt(diff)))
+        if not self.invoices_to_cancel_amount:
+            return
+        if self.partial_payment:
+            self.message_post(
+                body=_("Publicado como pago parcial: la factura queda con "
+                       "$ %(f)s de saldo.", f=fmt(diff)),
+                message_type="comment", subtype_xmlid="mail.mt_note")
+            return
+        sospecha = self._guess_missing_withholding(diff)
+        if sospecha:
+            raise UserError(_(
+                "Falta $ %(f)s y coincide con %(r)s.\n\n"
+                "¿Falta cargar ese certificado de retención? Cargalo y publicá.\n"
+                "Si el cliente realmente pagó de menos, tildá «Pago parcial» "
+                "y publicá: la factura queda con saldo.",
+                f=fmt(diff), r=sospecha))
+
+    def _guess_missing_withholding(self, gap):
+        """Devuelve el nombre de la retención (o par de retenciones) cuyo
+        importe coincide con `gap` (±1 $), o False.
+
+        Candidatas, sin valores del cliente en el código:
+        - las tasas que cada régimen ya tuvo en recibos publicados de la
+          compañía (importe/base de account.payment.group.withholding);
+        - Ganancias 2 % sobre el excedente del mínimo no sujeto (parámetro
+          `yaguven_payment_group.ganancias_minimo_no_sujeto`, RG 830);
+        - IVA al 50 % y al 100 % del 21 %.
+        Base = neto sin IVA de lo que se cancela (como la retención esperada).
+        Probado 13/11/26 contra 152 retenciones publicadas (reconoce 101) y
+        25 pagos parciales reales desde sep-26 (frena 1).
+        """
+        self.ensure_one()
+        from itertools import combinations
+        lines = self.to_pay_move_line_ids.filtered(
+            lambda l: l.move_id.move_type in ("out_invoice", "out_refund"))
+        total = sum(lines.mapped("move_id.amount_total"))
+        if not total:
+            return False
+        net = self.invoices_to_cancel_amount * sum(
+            lines.mapped("move_id.amount_untaxed")) / total
+        W = self.env["account.payment.group.withholding"].sudo()
+        hist = W.search([
+            ("company_id", "=", self.company_id.id),
+            ("payment_group_id.partner_type", "=", "customer"),
+            ("payment_group_id.state", "=", "posted"),
+            ("base_amount", ">", 0),
+        ])
+        cands = {}
+        for w in hist:
+            rate = round(100.0 * w.amount / w.base_amount, 2)
+            if 0 < rate <= 21:
+                label = "%s %s %%" % (w.tax_id.name, ("%.2f" % rate).rstrip("0").rstrip(".").replace(".", ","))
+                cands[label] = net * rate / 100.0
+        minimo = float(self.env["ir.config_parameter"].sudo().get_param(
+            "yaguven_payment_group.ganancias_minimo_no_sujeto", "224000"))
+        cands["Ganancias 2 % sobre el excedente de $ %s" % "{:,.0f}".format(minimo).replace(",", ".")] = max(0.0, net - minimo) * 0.02
+        cands["Retención de IVA 50 %"] = net * 0.105
+        cands["Retención de IVA 100 %"] = net * 0.21
+        items = [(k, v) for k, v in cands.items() if v > 0]
+        for k, v in items:
+            if abs(v - gap) <= 1.0:
+                return k
+        for (k1, v1), (k2, v2) in combinations(items, 2):
+            if abs(v1 + v2 - gap) <= 1.0:
+                return "%s + %s" % (k1, k2)
+        return False
 
     def _apply_withholdings_to_target_payment(self):
         """Genera el asiento del payment target con las write-off lines

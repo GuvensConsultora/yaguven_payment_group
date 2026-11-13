@@ -79,6 +79,8 @@
                                 <field name="advance_amount"
                                        help="Si querés entregar más cash que el bruto de las facturas, eso es anticipo. No genera retención."
                                        readonly="state != 'draft'"/>
+                                <field name="partial_payment"
+                                       invisible="partner_type != 'customer' or state != 'draft' or net_to_cancel_amount &lt;= 0"/>
                             </group>
                         </group>
                     </div>
