@@ -113,8 +113,9 @@ class AccountPaymentGroup(models.Model):
         compute="_compute_net_to_cancel_amount",
         string="Neto a cancelar",
         store=True,
-        help="Facturas a cancelar menos medios de pago. "
-             "Positivo = queda deuda; negativo = sobrante.",
+        help="Facturas a cancelar más anticipo, menos medios de pago y "
+             "retenciones. Positivo = queda deuda; negativo = sobrante "
+             "todavía no asignado como anticipo.",
     )
     advance_amount = fields.Monetary(
         compute="_compute_advance_amount",
@@ -122,9 +123,10 @@ class AccountPaymentGroup(models.Model):
         readonly=False,
         string="Anticipo sin factura",
         help="Si no hay facturas tildadas, toma automáticamente el total "
-             "de medios de pago. Es la base desde la que se calculan las "
-             "retenciones que se carguen como medios de pago. Editable "
-             "manualmente cuando no hay facturas.",
+             "de medios de pago. Con facturas, se carga a mano lo que el "
+             "cliente/proveedor entrega de más sobre ellas. Es la base desde "
+             "la que se calculan las retenciones que se carguen como medios "
+             "de pago.",
     )
     partner_balance_amount = fields.Monetary(
         compute="_compute_partner_balance_amount",
@@ -326,11 +328,18 @@ class AccountPaymentGroup(models.Model):
                 doc_lines.mapped("amount_residual")
             )
 
-    @api.depends("invoices_to_cancel_amount", "payments_amount", "withholdings_amount")
+    @api.depends(
+        "invoices_to_cancel_amount", "advance_amount",
+        "payments_amount", "withholdings_amount",
+    )
     def _compute_net_to_cancel_amount(self):
+        # El anticipo es parte de lo que se cancela: sin sumarlo, un recibo
+        # que cuadra con facturas + anticipo seguía mostrando el sobrante.
+        # Caso 2026-11-13, Arauco, COBRO CAMILETTI SA: sobraban 11,66.
         for group in self:
             group.net_to_cancel_amount = (
                 group.invoices_to_cancel_amount
+                + group.advance_amount
                 - group.payments_amount
                 - group.withholdings_amount
             )

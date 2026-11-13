@@ -78,7 +78,7 @@
                             <group>
                                 <field name="advance_amount"
                                        help="Si querés entregar más cash que el bruto de las facturas, eso es anticipo. No genera retención."
-                                       readonly="state != 'draft' or invoices_to_cancel_amount != 0"/>
+                                       readonly="state != 'draft'"/>
                             </group>
                         </group>
                     </div>
